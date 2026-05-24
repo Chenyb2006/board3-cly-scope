@@ -288,12 +288,6 @@
       </div>
 
       <div class="group">
-        <label for="adcPreset">Preset</label>
-        <select id="adcPreset">
-          <option value="manual" selected>Manual</option>
-          <option value="fast">Fast</option>
-          <option value="quiet">Quiet</option>
-        </select>
         <label for="filter">Filter</label>
         <select id="filter">
           <option value="off" selected>Off</option>
@@ -385,7 +379,7 @@
         </section>
         <section class="help-section">
           <h2>速度和滤波</h2>
-          <p><kbd>Sample</kbd> 是 ADC 采样目标。Fast 等价于 1000Hz、无工频滤波；Quiet 等价于 20Hz、无工频滤波。</p>
+          <p><kbd>Sample</kbd> 是 ADC 采样目标。看快速变化用 1000Hz；看慢变化可以降到 20Hz。</p>
           <p><kbd>Filter</kbd> 使用 ADS1220 内置 50/60Hz 抑制；打开后会锁到 20SPS，所以图会明显变慢。</p>
         </section>
         <section class="help-section">
@@ -439,7 +433,6 @@
       analogMode: document.getElementById("analogMode"),
       adcChannel: document.getElementById("adcChannel"),
       plotChannel: document.getElementById("plotChannel"),
-      adcPreset: document.getElementById("adcPreset"),
       filter: document.getElementById("filter"),
       outputMode: document.getElementById("outputMode"),
       avg: document.getElementById("avg"),
@@ -490,7 +483,6 @@
       analogMode: "100m",
       adcChannel: "i1",
       plotChannel: "i1",
-      adcPreset: "manual",
       filter: "off",
       outputMode: "avg",
       avgN: 1,
@@ -1036,11 +1028,6 @@
       await sendCommand("channel " + state.adcChannel);
       if (state.filter === "off") {
         await sendCommand("filter off");
-        if (state.adcPreset === "fast") {
-          await sendCommand("adc fast");
-        } else if (state.adcPreset === "quiet") {
-          await sendCommand("adc quiet");
-        }
         await sendCommand("sample " + state.sampleHz);
       } else {
         await sendCommand("filter " + state.filter);
@@ -1191,26 +1178,8 @@
       resetTrace();
     });
 
-    els.adcPreset.addEventListener("change", async () => {
-      state.adcPreset = els.adcPreset.value;
-      if (state.adcPreset === "fast") {
-        state.filter = "off";
-        state.sampleHz = 1000;
-      } else if (state.adcPreset === "quiet") {
-        state.filter = "off";
-        state.sampleHz = 20;
-      }
-      els.filter.value = state.filter;
-      els.sample.value = String(state.sampleHz);
-      clampOutputSettings();
-      resetTrace();
-      await configureBoard();
-    });
-
     els.filter.addEventListener("change", async () => {
       state.filter = els.filter.value;
-      state.adcPreset = "manual";
-      els.adcPreset.value = state.adcPreset;
       if (state.filter !== "off") {
         state.sampleHz = FILTER_SAMPLE_RATES[state.filter];
       } else {
@@ -1283,8 +1252,6 @@
 
     async function applySampleChange() {
       state.sampleHz = clampInt(els.sample.value, 20, 2000, 1000);
-      state.adcPreset = "manual";
-      els.adcPreset.value = state.adcPreset;
       els.sample.value = String(state.sampleHz);
       if (state.filter === "off") {
         clampOutputSettings();
