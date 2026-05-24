@@ -376,7 +376,7 @@
         <section class="help-section">
           <h2>基本流程</h2>
           <p>点 <kbd>Connect</kbd> 选择板子的 USB 串口后，页面会按当前控件配置板子并开始收数据。</p>
-          <p><kbd>Pause</kbd> 会发送 stream off/on；<kbd>Zero</kbd> 用当前窗口均值作为相对零点；<kbd>Clear</kbd> 只清图。</p>
+          <p><kbd>Pause</kbd> 会发送 stream off/on；<kbd>Zero</kbd> 取当前窗口均值：Delta 下作为零点，Absolute 下作为纵轴中心；<kbd>Clear</kbd> 只清图。</p>
         </section>
         <section class="help-section">
           <h2>采集链路</h2>
@@ -762,6 +762,7 @@
       const zero = visibleMeanMv();
       if (zero === null || !Number.isFinite(zero)) return;
       state.zeroMv = zero;
+      state.yCenterAbsMv = zero;
       state.startMs = null;
       pending = [];
       samples = [];
