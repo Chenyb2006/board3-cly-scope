@@ -35,13 +35,21 @@
     }
 
     .toolbar {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      align-items: start;
+      gap: 8px;
+      padding: 10px 12px;
+      background: var(--panel);
+      border-bottom: 1px solid var(--border);
+    }
+
+    .toolbar-controls {
       display: flex;
       align-items: center;
       gap: 8px;
       flex-wrap: wrap;
-      padding: 10px 12px;
-      background: var(--panel);
-      border-bottom: 1px solid var(--border);
+      min-width: 0;
     }
 
     .group {
@@ -89,6 +97,16 @@
       border-color: #9bbfe2;
     }
 
+    .help-button {
+      height: 32px;
+      padding: 0 14px;
+      border-color: var(--blue);
+      background: #e8f2fb;
+      color: var(--blue);
+      font-weight: 650;
+      white-space: nowrap;
+    }
+
     select {
       padding: 0 28px 0 8px;
     }
@@ -109,6 +127,14 @@
     input[type="range"] {
       width: 130px;
       padding: 0;
+    }
+
+    #yspan {
+      width: 220px;
+    }
+
+    #yspanValue {
+      width: 84px;
     }
 
     input:disabled,
@@ -250,87 +276,78 @@
 <body>
   <main class="app">
     <div class="toolbar">
-      <div class="group">
-        <button id="connect" class="primary">Connect</button>
-        <button id="pause" disabled>Pause</button>
-        <button id="zero" disabled>Zero</button>
-        <button id="clear" disabled>Clear</button>
-        <button id="helpButton">说明</button>
+      <div class="toolbar-controls">
+        <div class="group">
+          <button id="connect" class="primary">Connect</button>
+          <button id="pause" disabled>Pause</button>
+          <button id="zero" disabled>Zero</button>
+          <button id="clear" disabled>Clear</button>
+        </div>
+
+        <div class="group">
+          <label for="analogMode">Analog</label>
+          <select id="analogMode">
+            <option value="100m" selected>100M</option>
+            <option value="10k">10K</option>
+            <option value="off">Off</option>
+          </select>
+          <label for="adcChannel">ADC</label>
+          <select id="adcChannel">
+            <option value="i1" selected>ISENSE1</option>
+            <option value="i2">ISENSE2</option>
+            <option value="both">Both</option>
+          </select>
+          <label for="plotChannel">Plot</label>
+          <select id="plotChannel">
+            <option value="i1" selected>ISENSE1</option>
+            <option value="i2">ISENSE2</option>
+          </select>
+        </div>
+
+        <div class="group">
+          <label for="filter">Filter</label>
+          <select id="filter">
+            <option value="off" selected>Off</option>
+            <option value="50">50Hz</option>
+            <option value="60">60Hz</option>
+            <option value="50_60">50+60Hz</option>
+          </select>
+          <label for="sample">Sample</label>
+          <input id="sample" type="number" min="20" max="2000" step="10" value="1000">
+        </div>
+
+        <div class="group">
+          <label for="view">View</label>
+          <select id="view">
+            <option value="absolute" selected>Absolute</option>
+            <option value="delta">Delta</option>
+          </select>
+          <label for="mode">Scroll</label>
+          <select id="mode">
+            <option value="track" selected>Track</option>
+            <option value="sweep">Sweep</option>
+          </select>
+          <label for="draw">Draw</label>
+          <select id="draw">
+            <option value="raw" selected>Raw</option>
+            <option value="average">Average</option>
+          </select>
+        </div>
+
+        <div class="group">
+          <label for="window">Window</label>
+          <input id="window" type="range" min="0.5" max="30" step="0.5" value="5">
+          <span id="windowText">5.0s</span>
+        </div>
+
+        <div class="group">
+          <label for="yspan">Y span</label>
+          <input id="yspan" type="range" min="0.02" max="100" step="0.01" value="2">
+          <input id="yspanValue" type="number" min="0.02" max="100" step="0.01" value="2.00">
+        </div>
       </div>
 
-      <div class="group">
-        <label for="analogMode">Analog</label>
-        <select id="analogMode">
-          <option value="100m" selected>100M</option>
-          <option value="10k">10K</option>
-          <option value="off">Off</option>
-        </select>
-        <label for="adcChannel">ADC</label>
-        <select id="adcChannel">
-          <option value="i1" selected>ISENSE1</option>
-          <option value="i2">ISENSE2</option>
-          <option value="both">Both</option>
-        </select>
-        <label for="plotChannel">Plot</label>
-        <select id="plotChannel">
-          <option value="i1" selected>ISENSE1</option>
-          <option value="i2">ISENSE2</option>
-        </select>
-      </div>
-
-      <div class="group">
-        <label for="filter">Filter</label>
-        <select id="filter">
-          <option value="off" selected>Off</option>
-          <option value="50">50Hz</option>
-          <option value="60">60Hz</option>
-          <option value="50_60">50+60Hz</option>
-        </select>
-        <label for="sample">Sample</label>
-        <input id="sample" type="number" min="20" max="2000" step="10" value="1000">
-      </div>
-
-      <div class="group">
-        <label for="outputMode">Output</label>
-        <select id="outputMode">
-          <option value="avg" selected>Avg N</option>
-          <option value="rate">Rate Hz</option>
-        </select>
-        <label for="avg">Avg</label>
-        <input id="avg" type="number" min="1" max="400" step="1" value="1">
-        <label for="output">Out Hz</label>
-        <input id="output" type="number" min="1" max="1000" step="1" value="1000">
-      </div>
-
-      <div class="group">
-        <label for="view">View</label>
-        <select id="view">
-          <option value="delta" selected>Delta</option>
-          <option value="absolute">Absolute</option>
-        </select>
-        <label for="mode">Scroll</label>
-        <select id="mode">
-          <option value="track" selected>Track</option>
-          <option value="sweep">Sweep</option>
-        </select>
-        <label for="draw">Draw</label>
-        <select id="draw">
-          <option value="raw" selected>Raw</option>
-          <option value="average">Average</option>
-        </select>
-      </div>
-
-      <div class="group">
-        <label for="window">Window</label>
-        <input id="window" type="range" min="0.5" max="30" step="0.5" value="5">
-        <span id="windowText">5.0s</span>
-      </div>
-
-      <div class="group">
-        <label for="yspan">Y span</label>
-        <input id="yspan" type="range" min="0.02" max="20" step="0.02" value="2">
-        <span id="yspanText">2.00mV</span>
-      </div>
+      <button id="helpButton" class="help-button">说明</button>
     </div>
 
     <section class="scope-wrap" id="scope">
@@ -370,10 +387,8 @@
         </section>
         <section class="help-section">
           <h2>输出点</h2>
-          <p>ADC 是板子实际采样速度，串口输出是电脑实际收到多少个点；两者可以一样，也可以先平均后再输出。</p>
-          <p><kbd>Avg N</kbd> 表示 N 个 ADC 样本平均成 1 个输出点。N=1 就是不平均，ADC 采到多少点就尽量发多少点。</p>
-          <p>例：ADC=1000Hz，Avg=10，则每 10 个样本合成 1 个点，电脑大约每秒收到 100 个点。</p>
-          <p><kbd>Rate Hz</kbd> 是反过来设置：直接指定电脑每秒想收到几个点。例：ADC=1000Hz，Rate=100Hz，等价于 Avg=10。</p>
+          <p>页面默认让板子采到多少点就输出多少点，不在串口输出前做平均。这样硬件调试时能看到真实波动。</p>
+          <p>要降低数据量，直接降低 <kbd>Sample</kbd>，或者打开 <kbd>Filter</kbd> 进入 ADS1220 的低速工频抑制模式。</p>
         </section>
         <section class="help-section">
           <h2>显示</h2>
@@ -382,7 +397,7 @@
         </section>
         <section class="help-section">
           <h2>画法</h2>
-          <p><kbd>Raw</kbd> 逐点连线，是默认调试模式。<kbd>Average</kbd> 只做屏幕像素级显示平均，不改变板子数据。</p>
+          <p><kbd>Raw</kbd> 逐点连线，是默认调试模式。<kbd>Average</kbd> 只做显示平均，不改变板子采样和串口数据。</p>
         </section>
       </div>
     </section>
@@ -418,9 +433,6 @@
       adcChannel: document.getElementById("adcChannel"),
       plotChannel: document.getElementById("plotChannel"),
       filter: document.getElementById("filter"),
-      outputMode: document.getElementById("outputMode"),
-      avg: document.getElementById("avg"),
-      output: document.getElementById("output"),
       view: document.getElementById("view"),
       mode: document.getElementById("mode"),
       draw: document.getElementById("draw"),
@@ -428,7 +440,7 @@
       window: document.getElementById("window"),
       windowText: document.getElementById("windowText"),
       yspan: document.getElementById("yspan"),
-      yspanText: document.getElementById("yspanText"),
+      yspanValue: document.getElementById("yspanValue"),
       scope: document.getElementById("scope"),
       grid: document.getElementById("grid"),
       trace: document.getElementById("trace"),
@@ -466,16 +478,15 @@
       adcChannel: "i1",
       plotChannel: "i1",
       filter: "off",
-      outputMode: "avg",
       avgN: 1,
       outputHz: 1000,
-      view: "delta",
+      view: "absolute",
       mode: "track",
       draw: "raw",
       sampleHz: 1000,
       windowSec: 5,
       ySpanMv: 2,
-      plotLeft: 72,
+      plotLeft: 102,
       plotRight: 14,
       plotTop: 12,
       plotBottom: 28,
@@ -503,12 +514,9 @@
       els.pause.textContent = state.paused ? "Resume" : "Pause";
       els.pause.classList.toggle("active", state.paused);
       els.windowText.textContent = state.windowSec.toFixed(1) + "s";
-      els.yspanText.textContent = state.ySpanMv.toFixed(2) + "mV";
+      els.yspan.value = String(state.ySpanMv);
+      els.yspanValue.value = state.ySpanMv.toFixed(2);
       els.sample.disabled = state.filter !== "off";
-      els.avg.disabled = state.outputMode !== "avg";
-      els.output.disabled = state.outputMode !== "rate";
-      els.output.value = String(state.outputHz);
-      els.avg.value = String(state.avgN);
       els.sample.value = String(state.sampleHz);
     }
 
@@ -592,11 +600,11 @@
       gridCtx.font = "12px -apple-system, BlinkMacSystemFont, Segoe UI, sans-serif";
       gridCtx.textAlign = "right";
       gridCtx.textBaseline = "middle";
-      gridCtx.fillText((center + state.ySpanMv / 2).toFixed(3), left - 8, top);
-      gridCtx.fillText(center.toFixed(3), left - 8, top + ph / 2);
-      gridCtx.fillText((center - state.ySpanMv / 2).toFixed(3), left - 8, bottom);
+      gridCtx.fillText((center + state.ySpanMv / 2).toFixed(3), left - 10, top);
+      gridCtx.fillText(center.toFixed(3), left - 10, top + ph / 2);
+      gridCtx.fillText((center - state.ySpanMv / 2).toFixed(3), left - 10, bottom);
       gridCtx.save();
-      gridCtx.translate(14, top + ph / 2);
+      gridCtx.translate(16, top + ph / 2);
       gridCtx.rotate(-Math.PI / 2);
       gridCtx.textAlign = "center";
       gridCtx.fillText(state.view === "absolute" ? "mV" : "delta mV", 0, 0);
@@ -744,26 +752,28 @@
       updateReading();
     }
 
-    function buildPixelBuckets(visible, startSec) {
+    function buildAveragePoints(visible, startSec) {
       const width = Math.max(1, Math.floor(plotWidth()));
-      const buckets = new Array(width);
+      const stepSec = state.windowSec / width;
+      const buckets = new Map();
       for (const sample of visible) {
-        const x = xToCanvas(sample.tSec, startSec);
-        const px = Math.max(0, Math.min(width - 1, Math.round(x - state.plotLeft)));
+        const index = Math.floor(sample.tSec / stepSec);
         const y = yToCanvas(sample.displayMv);
         if (!Number.isFinite(y)) continue;
-        const bucket = buckets[px];
+        const bucket = buckets.get(index);
         if (bucket) {
-          bucket.minY = Math.min(bucket.minY, y);
-          bucket.maxY = Math.max(bucket.maxY, y);
-          bucket.lastY = y;
           bucket.sumY += y;
           bucket.count += 1;
         } else {
-          buckets[px] = { x, minY: y, maxY: y, lastY: y, sumY: y, count: 1 };
+          buckets.set(index, { tSec: (index + 0.5) * stepSec, sumY: y, count: 1 });
         }
       }
-      return buckets.filter(Boolean);
+      return Array.from(buckets.values())
+        .sort((a, b) => a.tSec - b.tSec)
+        .map((bucket) => ({
+          x: xToCanvas(bucket.tSec, startSec),
+          y: bucket.sumY / bucket.count
+        }));
     }
 
     function drawTraceFrame() {
@@ -777,7 +787,7 @@
       traceCtx.clip();
 
       if (state.draw === "average") {
-        const points = buildPixelBuckets(visible, startSec);
+        const points = buildAveragePoints(visible, startSec);
         if (!points.length) {
           traceCtx.restore();
           return;
@@ -787,11 +797,10 @@
         traceCtx.lineWidth = 1.4;
         traceCtx.beginPath();
         points.forEach((point, index) => {
-          const y = point.sumY / point.count;
           if (index === 0) {
-            traceCtx.moveTo(point.x, y);
+            traceCtx.moveTo(point.x, point.y);
           } else {
-            traceCtx.lineTo(point.x, y);
+            traceCtx.lineTo(point.x, point.y);
           }
         });
         traceCtx.stroke();
@@ -961,23 +970,17 @@
       return state.filter === "off" ? state.sampleHz : FILTER_SAMPLE_RATES[state.filter];
     }
 
-    function clampOutputSettings() {
+    function applyFullRateOutput() {
       state.sampleHz = state.filter === "off" ? clampInt(els.sample.value, 20, 2000, state.sampleHz) : effectiveSampleHz();
       const sample = effectiveSampleHz();
-      state.avgN = clampInt(els.avg.value, 1, 400, state.avgN);
-      state.outputHz = clampInt(els.output.value, 1, 1000, state.outputHz);
-      if (state.outputMode === "avg") {
-        state.outputHz = Math.max(1, Math.floor(sample / state.avgN));
-      } else {
-        state.outputHz = Math.min(state.outputHz, sample);
-        state.avgN = Math.max(1, Math.round(sample / state.outputHz));
-      }
+      state.avgN = 1;
+      state.outputHz = sample;
       updateControls();
     }
 
     async function configureBoard() {
       if (!state.connected) return;
-      clampOutputSettings();
+      applyFullRateOutput();
       rejectStaleData();
       await sendCommand("stream off");
       await sendCommand("mode " + state.analogMode);
@@ -988,11 +991,7 @@
       } else {
         await sendCommand("filter " + state.filter);
       }
-      if (state.outputMode === "rate") {
-        await sendCommand("rate " + state.outputHz);
-      } else {
-        await sendCommand("avg " + state.avgN);
-      }
+      await sendCommand("avg 1");
       rejectStaleData(250);
       if (!state.paused) await sendCommand("stream on");
     }
@@ -1138,42 +1137,6 @@
       await configureBoard();
     });
 
-    async function applyOutputModeChange() {
-      state.outputMode = els.outputMode.value;
-      clampOutputSettings();
-      resetTrace();
-      await configureBoard();
-    }
-
-    async function applyAvgChange() {
-      state.avgN = clampInt(els.avg.value, 1, 400, 1);
-      state.outputMode = "avg";
-      els.outputMode.value = state.outputMode;
-      clampOutputSettings();
-      resetTrace();
-      await configureBoard();
-    }
-
-    async function applyOutputChange() {
-      state.outputHz = clampInt(els.output.value, 1, 1000, 1000);
-      state.outputMode = "rate";
-      els.outputMode.value = state.outputMode;
-      clampOutputSettings();
-      resetTrace();
-      await configureBoard();
-    }
-
-    els.outputMode.addEventListener("change", applyOutputModeChange);
-    els.avg.addEventListener("change", applyAvgChange);
-    els.output.addEventListener("change", applyOutputChange);
-
-    els.output.addEventListener("keydown", (event) => {
-      if (event.key === "Enter") {
-        event.preventDefault();
-        applyOutputChange();
-      }
-    });
-
     els.view.addEventListener("change", () => {
       state.view = els.view.value;
       if (state.latestMv !== null) {
@@ -1202,7 +1165,7 @@
       state.sampleHz = clampInt(els.sample.value, 20, 2000, 1000);
       els.sample.value = String(state.sampleHz);
       if (state.filter === "off") {
-        clampOutputSettings();
+        applyFullRateOutput();
         resetTrace();
         await configureBoard();
       }
@@ -1217,13 +1180,6 @@
       }
     });
 
-    els.avg.addEventListener("keydown", (event) => {
-      if (event.key === "Enter") {
-        event.preventDefault();
-        applyAvgChange();
-      }
-    });
-
     els.window.addEventListener("input", () => {
       state.windowSec = Number.parseFloat(els.window.value);
       updateControls();
@@ -1231,11 +1187,32 @@
       clearTraceOnly();
     });
 
-    els.yspan.addEventListener("input", () => {
-      state.ySpanMv = Number.parseFloat(els.yspan.value);
+    function applyYSpanValue(value) {
+      const next = Number.parseFloat(value);
+      if (!Number.isFinite(next)) {
+        updateControls();
+        return;
+      }
+      state.ySpanMv = Math.max(0.02, Math.min(100, next));
       updateControls();
       markGridDirty();
       clearTraceOnly();
+    }
+
+    els.yspan.addEventListener("input", () => {
+      applyYSpanValue(els.yspan.value);
+    });
+
+    els.yspanValue.addEventListener("change", () => {
+      applyYSpanValue(els.yspanValue.value);
+    });
+
+    els.yspanValue.addEventListener("keydown", (event) => {
+      if (event.key === "Enter") {
+        event.preventDefault();
+        applyYSpanValue(els.yspanValue.value);
+        els.yspanValue.blur();
+      }
     });
 
     window.addEventListener("resize", resizeCanvases);
