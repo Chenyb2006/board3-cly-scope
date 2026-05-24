@@ -153,14 +153,6 @@
       font-variant-numeric: tabular-nums;
     }
 
-    .status .reply {
-      flex: 1 1 240px;
-      min-width: 180px;
-      overflow: hidden;
-      text-overflow: ellipsis;
-      white-space: nowrap;
-    }
-
     .status strong {
       color: var(--text);
       font-weight: 600;
@@ -263,7 +255,6 @@
         <button id="pause" disabled>Pause</button>
         <button id="zero" disabled>Zero</button>
         <button id="clear" disabled>Clear</button>
-        <button id="statusButton" disabled>Status</button>
         <button id="helpButton">说明</button>
       </div>
 
@@ -327,10 +318,6 @@
           <option value="raw" selected>Raw</option>
           <option value="average">Average</option>
         </select>
-        <label class="checkbox-label">
-          <input id="envelope" type="checkbox">
-          Envelope
-        </label>
       </div>
 
       <div class="group">
@@ -356,7 +343,6 @@
       <span id="reading">value: --</span>
       <span id="rate">rate: --</span>
       <span id="dropped">dropped: 0</span>
-      <span id="reply" class="reply">reply: --</span>
     </div>
   </main>
 
@@ -397,7 +383,6 @@
         <section class="help-section">
           <h2>画法</h2>
           <p><kbd>Raw</kbd> 逐点连线，是默认调试模式。<kbd>Average</kbd> 只做屏幕像素级显示平均，不改变板子数据。</p>
-          <p><kbd>Envelope</kbd> 画同一像素列内的最大最小范围；点太密时有助于看抖动，但会出现淡色包络影子。</p>
         </section>
       </div>
     </section>
@@ -426,7 +411,6 @@
       pause: document.getElementById("pause"),
       zero: document.getElementById("zero"),
       clear: document.getElementById("clear"),
-      statusButton: document.getElementById("statusButton"),
       helpButton: document.getElementById("helpButton"),
       helpClose: document.getElementById("helpClose"),
       helpOverlay: document.getElementById("helpOverlay"),
@@ -445,15 +429,13 @@
       windowText: document.getElementById("windowText"),
       yspan: document.getElementById("yspan"),
       yspanText: document.getElementById("yspanText"),
-      envelope: document.getElementById("envelope"),
       scope: document.getElementById("scope"),
       grid: document.getElementById("grid"),
       trace: document.getElementById("trace"),
       status: document.getElementById("status"),
       reading: document.getElementById("reading"),
       rate: document.getElementById("rate"),
-      dropped: document.getElementById("dropped"),
-      reply: document.getElementById("reply")
+      dropped: document.getElementById("dropped")
     };
 
     const gridCtx = els.grid.getContext("2d");
@@ -493,7 +475,6 @@
       sampleHz: 1000,
       windowSec: 5,
       ySpanMv: 2,
-      showEnvelope: false,
       plotLeft: 72,
       plotRight: 14,
       plotTop: 12,
@@ -519,7 +500,6 @@
       els.pause.disabled = !state.connected;
       els.zero.disabled = !state.connected;
       els.clear.disabled = !state.connected;
-      els.statusButton.disabled = !state.connected;
       els.pause.textContent = state.paused ? "Resume" : "Pause";
       els.pause.classList.toggle("active", state.paused);
       els.windowText.textContent = state.windowSec.toFixed(1) + "s";
@@ -796,40 +776,27 @@
       traceCtx.rect(state.plotLeft, state.plotTop, plotWidth(), plotHeight());
       traceCtx.clip();
 
-      if (state.showEnvelope || state.draw === "average") {
+      if (state.draw === "average") {
         const points = buildPixelBuckets(visible, startSec);
         if (!points.length) {
           traceCtx.restore();
           return;
         }
 
-        traceCtx.strokeStyle = "rgba(0, 104, 183, 0.16)";
-        traceCtx.lineWidth = 1;
+        traceCtx.strokeStyle = "#0068b7";
+        traceCtx.lineWidth = 1.4;
         traceCtx.beginPath();
-        for (const point of points) {
-          if (point.maxY - point.minY > 1.5) {
-            traceCtx.moveTo(point.x, point.minY);
-            traceCtx.lineTo(point.x, point.maxY);
+        points.forEach((point, index) => {
+          const y = point.sumY / point.count;
+          if (index === 0) {
+            traceCtx.moveTo(point.x, y);
+          } else {
+            traceCtx.lineTo(point.x, y);
           }
-        }
+        });
         traceCtx.stroke();
-
-        if (state.draw === "average") {
-          traceCtx.strokeStyle = "#0068b7";
-          traceCtx.lineWidth = 1.4;
-          traceCtx.beginPath();
-          points.forEach((point, index) => {
-            const y = point.sumY / point.count;
-            if (index === 0) {
-              traceCtx.moveTo(point.x, y);
-            } else {
-              traceCtx.lineTo(point.x, y);
-            }
-          });
-          traceCtx.stroke();
-          traceCtx.restore();
-          return;
-        }
+        traceCtx.restore();
+        return;
       }
 
       traceCtx.strokeStyle = "#0068b7";
@@ -874,15 +841,6 @@
         }
       }
       return data;
-    }
-
-    function isReplyLine(line) {
-      return /^(OK|ERR|WARN|STATUS|Board3 CLY commands:)/.test(line);
-    }
-
-    function noteReply(line) {
-      if (!line) return;
-      els.reply.textContent = "reply: " + line;
     }
 
     function queueData(data) {
@@ -962,7 +920,6 @@
       els.connect.disabled = true;
       els.connect.textContent = "Demo";
       setStatus("demo data", "good");
-      noteReply("demo mode");
       updateControls();
       resetTrace();
 
@@ -987,7 +944,6 @@
         const writer = port.writable.getWriter();
         try {
           await writer.write(encoder.encode(text + "\n"));
-          noteReply("sent " + text);
         } finally {
           writer.releaseLock();
         }
@@ -1056,8 +1012,6 @@
               const data = parseDataLine(line);
               if (data) {
                 queueData(data);
-              } else if (isReplyLine(line)) {
-                noteReply(line);
               }
             }
           }
@@ -1084,7 +1038,6 @@
         state.paused = false;
         els.connect.textContent = "Disconnect";
         setStatus("connected", "good");
-        noteReply("connected");
         updateControls();
         resetTrace();
         readLoopPromise = readLoop();
@@ -1110,7 +1063,6 @@
         readLoopPromise = null;
         els.connect.textContent = "Connect";
         setStatus("disconnected", "");
-        noteReply("disconnected");
         updateControls();
       }
     }
@@ -1129,10 +1081,6 @@
     els.zero.addEventListener("click", applyZeroFromWindow);
 
     els.clear.addEventListener("click", resetTrace);
-
-    els.statusButton.addEventListener("click", async () => {
-      await sendCommand("status");
-    });
 
     els.helpButton.addEventListener("click", () => {
       els.helpOverlay.hidden = false;
@@ -1288,11 +1236,6 @@
       updateControls();
       markGridDirty();
       clearTraceOnly();
-    });
-
-    els.envelope.addEventListener("change", () => {
-      state.showEnvelope = els.envelope.checked;
-      markDirty();
     });
 
     window.addEventListener("resize", resizeCanvases);
