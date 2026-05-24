@@ -1,0 +1,1339 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Board3 CLY Scope</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --bg: #f6f7f9;
+      --panel: #ffffff;
+      --border: #d7dce2;
+      --text: #1d2733;
+      --muted: #627083;
+      --blue: #0068b7;
+      --green: #147d4f;
+      --red: #b3261e;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--text);
+      font: 13px/1.35 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+
+    .app {
+      display: grid;
+      grid-template-rows: auto 1fr auto;
+      min-height: 100vh;
+    }
+
+    .toolbar {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex-wrap: wrap;
+      padding: 10px 12px;
+      background: var(--panel);
+      border-bottom: 1px solid var(--border);
+    }
+
+    .group {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      min-height: 32px;
+      padding-right: 8px;
+      border-right: 1px solid var(--border);
+    }
+
+    .group:last-child {
+      border-right: 0;
+    }
+
+    label {
+      color: var(--muted);
+      font-size: 12px;
+    }
+
+    button,
+    select,
+    input {
+      height: 28px;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      background: #fff;
+      color: var(--text);
+      font: inherit;
+    }
+
+    button {
+      padding: 0 10px;
+      cursor: pointer;
+    }
+
+    button.primary {
+      background: var(--blue);
+      border-color: var(--blue);
+      color: #fff;
+    }
+
+    button.active {
+      background: #e7f0fb;
+      border-color: #9bbfe2;
+    }
+
+    select {
+      padding: 0 28px 0 8px;
+    }
+
+    input[type="number"] {
+      width: 76px;
+      padding: 0 6px;
+    }
+
+    input[type="checkbox"] {
+      width: 16px;
+      height: 16px;
+      margin: 0;
+      padding: 0;
+      vertical-align: middle;
+    }
+
+    input[type="range"] {
+      width: 130px;
+      padding: 0;
+    }
+
+    input:disabled,
+    select:disabled {
+      color: #8d98a6;
+      background: #f0f3f6;
+    }
+
+    .checkbox-label {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      color: var(--text);
+    }
+
+    .scope-wrap {
+      position: relative;
+      min-height: 0;
+      margin: 12px;
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      overflow: hidden;
+    }
+
+    canvas {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+    }
+
+    .status {
+      display: flex;
+      gap: 16px;
+      align-items: center;
+      flex-wrap: wrap;
+      padding: 8px 12px;
+      background: var(--panel);
+      border-top: 1px solid var(--border);
+      color: var(--muted);
+      font-variant-numeric: tabular-nums;
+    }
+
+    .status .reply {
+      flex: 1 1 240px;
+      min-width: 180px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .status strong {
+      color: var(--text);
+      font-weight: 600;
+    }
+
+    .bad {
+      color: var(--red);
+    }
+
+    .good {
+      color: var(--green);
+    }
+
+    .modal-backdrop {
+      position: fixed;
+      inset: 0;
+      z-index: 10;
+      display: grid;
+      place-items: center;
+      padding: 18px;
+      background: rgba(24, 34, 45, 0.36);
+    }
+
+    .modal-backdrop[hidden] {
+      display: none;
+    }
+
+    .help-panel {
+      width: min(920px, 100%);
+      max-height: min(780px, calc(100vh - 36px));
+      overflow: auto;
+      background: #fff;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      box-shadow: 0 18px 42px rgba(20, 28, 36, 0.20);
+    }
+
+    .help-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      position: sticky;
+      top: 0;
+      padding: 12px 14px;
+      background: #fff;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .help-head h1 {
+      margin: 0;
+      font-size: 16px;
+      font-weight: 650;
+    }
+
+    .help-body {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+      gap: 0;
+    }
+
+    .help-section {
+      padding: 14px;
+      border-right: 1px solid var(--border);
+      border-bottom: 1px solid var(--border);
+    }
+
+    .help-section h2 {
+      margin: 0 0 8px;
+      font-size: 13px;
+    }
+
+    .help-section p {
+      margin: 0 0 8px;
+      color: var(--muted);
+    }
+
+    .help-section p:last-child {
+      margin-bottom: 0;
+    }
+
+    kbd {
+      display: inline-block;
+      min-width: 1.6em;
+      padding: 1px 5px;
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      background: #f4f6f8;
+      color: var(--text);
+      font: 12px/1.35 ui-monospace, SFMono-Regular, Menlo, monospace;
+      text-align: center;
+    }
+  </style>
+</head>
+<body>
+  <main class="app">
+    <div class="toolbar">
+      <div class="group">
+        <button id="connect" class="primary">Connect</button>
+        <button id="pause" disabled>Pause</button>
+        <button id="zero" disabled>Zero</button>
+        <button id="clear" disabled>Clear</button>
+        <button id="statusButton" disabled>Status</button>
+        <button id="helpButton">说明</button>
+      </div>
+
+      <div class="group">
+        <label for="analogMode">Analog</label>
+        <select id="analogMode">
+          <option value="100m" selected>100M</option>
+          <option value="10k">10K</option>
+          <option value="off">Off</option>
+        </select>
+        <label for="adcChannel">ADC</label>
+        <select id="adcChannel">
+          <option value="i1" selected>ISENSE1</option>
+          <option value="i2">ISENSE2</option>
+          <option value="both">Both</option>
+        </select>
+        <label for="plotChannel">Plot</label>
+        <select id="plotChannel">
+          <option value="i1" selected>ISENSE1</option>
+          <option value="i2">ISENSE2</option>
+        </select>
+      </div>
+
+      <div class="group">
+        <label for="adcPreset">Preset</label>
+        <select id="adcPreset">
+          <option value="manual" selected>Manual</option>
+          <option value="fast">Fast</option>
+          <option value="quiet">Quiet</option>
+        </select>
+        <label for="filter">Filter</label>
+        <select id="filter">
+          <option value="off" selected>Off</option>
+          <option value="50">50Hz</option>
+          <option value="60">60Hz</option>
+          <option value="50_60">50+60Hz</option>
+        </select>
+        <label for="sample">Sample</label>
+        <input id="sample" type="number" min="20" max="2000" step="10" value="1000">
+      </div>
+
+      <div class="group">
+        <label for="outputMode">Output</label>
+        <select id="outputMode">
+          <option value="avg" selected>Avg N</option>
+          <option value="rate">Rate Hz</option>
+        </select>
+        <label for="avg">Avg</label>
+        <input id="avg" type="number" min="1" max="400" step="1" value="1">
+        <label for="output">Out Hz</label>
+        <input id="output" type="number" min="1" max="1000" step="1" value="1000">
+      </div>
+
+      <div class="group">
+        <label for="view">View</label>
+        <select id="view">
+          <option value="delta" selected>Delta</option>
+          <option value="absolute">Absolute</option>
+        </select>
+        <label for="mode">Scroll</label>
+        <select id="mode">
+          <option value="track" selected>Track</option>
+          <option value="sweep">Sweep</option>
+        </select>
+        <label for="draw">Draw</label>
+        <select id="draw">
+          <option value="raw" selected>Raw</option>
+          <option value="average">Average</option>
+        </select>
+        <label class="checkbox-label">
+          <input id="envelope" type="checkbox">
+          Envelope
+        </label>
+      </div>
+
+      <div class="group">
+        <label for="window">Window</label>
+        <input id="window" type="range" min="0.5" max="30" step="0.5" value="5">
+        <span id="windowText">5.0s</span>
+      </div>
+
+      <div class="group">
+        <label for="yspan">Y span</label>
+        <input id="yspan" type="range" min="0.02" max="20" step="0.02" value="2">
+        <span id="yspanText">2.00mV</span>
+      </div>
+    </div>
+
+    <section class="scope-wrap" id="scope">
+      <canvas id="grid"></canvas>
+      <canvas id="trace"></canvas>
+    </section>
+
+    <div class="status">
+      <span>Status: <strong id="status">disconnected</strong></span>
+      <span id="reading">value: --</span>
+      <span id="rate">rate: --</span>
+      <span id="dropped">dropped: 0</span>
+      <span id="reply" class="reply">reply: --</span>
+    </div>
+  </main>
+
+  <div id="helpOverlay" class="modal-backdrop" hidden>
+    <section class="help-panel" role="dialog" aria-modal="true" aria-labelledby="helpTitle">
+      <div class="help-head">
+        <h1 id="helpTitle">Board3 CLY 示波器说明</h1>
+        <button id="helpClose">Close</button>
+      </div>
+      <div class="help-body">
+        <section class="help-section">
+          <h2>基本流程</h2>
+          <p>点 <kbd>Connect</kbd> 选择板子的 USB 串口后，页面会按当前控件配置板子并开始收数据。</p>
+          <p><kbd>Pause</kbd> 会发送 stream off/on；<kbd>Zero</kbd> 用当前窗口均值作为相对零点；<kbd>Clear</kbd> 只清图。</p>
+        </section>
+        <section class="help-section">
+          <h2>采集链路</h2>
+          <p><kbd>Analog</kbd> 是模拟开关路径：100M 是默认高阻 TIA 路径，10K 主要用于硬件检查，Off 断开这一路。</p>
+          <p><kbd>ADC</kbd> 决定板子采哪一路；选 Both 时板子交替采两路，但图上仍然只显示 <kbd>Plot</kbd> 选中的一路。</p>
+        </section>
+        <section class="help-section">
+          <h2>速度和滤波</h2>
+          <p><kbd>Sample</kbd> 是 ADC 采样目标。Fast 等价于 1000Hz、无工频滤波；Quiet 等价于 20Hz、无工频滤波。</p>
+          <p><kbd>Filter</kbd> 使用 ADS1220 内置 50/60Hz 抑制；打开后会锁到 20SPS，所以图会明显变慢。</p>
+        </section>
+        <section class="help-section">
+          <h2>输出点</h2>
+          <p>ADC 是板子实际采样速度，串口输出是电脑实际收到多少个点；两者可以一样，也可以先平均后再输出。</p>
+          <p><kbd>Avg N</kbd> 表示 N 个 ADC 样本平均成 1 个输出点。N=1 就是不平均，ADC 采到多少点就尽量发多少点。</p>
+          <p>例：ADC=1000Hz，Avg=10，则每 10 个样本合成 1 个点，电脑大约每秒收到 100 个点。</p>
+          <p><kbd>Rate Hz</kbd> 是反过来设置：直接指定电脑每秒想收到几个点。例：ADC=1000Hz，Rate=100Hz，等价于 Avg=10。</p>
+        </section>
+        <section class="help-section">
+          <h2>显示</h2>
+          <p><kbd>Delta</kbd> 看相对变化，适合调硬件细小波动；<kbd>Absolute</kbd> 看绝对电压。</p>
+          <p><kbd>Track</kbd> 是跟踪滚动；<kbd>Sweep</kbd> 是按时间窗扫屏。<kbd>Y span</kbd> 控制纵向量程。</p>
+        </section>
+        <section class="help-section">
+          <h2>画法</h2>
+          <p><kbd>Raw</kbd> 逐点连线，是默认调试模式。<kbd>Average</kbd> 只做屏幕像素级显示平均，不改变板子数据。</p>
+          <p><kbd>Envelope</kbd> 画同一像素列内的最大最小范围；点太密时有助于看抖动，但会出现淡色包络影子。</p>
+        </section>
+      </div>
+    </section>
+  </div>
+
+  <script>
+    "use strict";
+
+    window.__scopeErrors = [];
+    window.addEventListener("error", (event) => {
+      window.__scopeErrors.push(event.message || "script error");
+    });
+    window.addEventListener("unhandledrejection", (event) => {
+      window.__scopeErrors.push(String(event.reason || "unhandled rejection"));
+    });
+
+    const DATA_FIELDS = [
+      "tag", "ms", "mode", "status", "i1_avg_uv", "i2_avg_uv", "di1_uv", "di2_uv",
+      "samples", "i1_n", "i2_n", "elapsed_ms", "conv_us", "sample_hz", "output_hz",
+      "ads_hz", "filter", "count", "output_count"
+    ];
+
+    const FILTER_SAMPLE_RATES = { "50": 20, "60": 20, "50_60": 20 };
+    const els = {
+      connect: document.getElementById("connect"),
+      pause: document.getElementById("pause"),
+      zero: document.getElementById("zero"),
+      clear: document.getElementById("clear"),
+      statusButton: document.getElementById("statusButton"),
+      helpButton: document.getElementById("helpButton"),
+      helpClose: document.getElementById("helpClose"),
+      helpOverlay: document.getElementById("helpOverlay"),
+      analogMode: document.getElementById("analogMode"),
+      adcChannel: document.getElementById("adcChannel"),
+      plotChannel: document.getElementById("plotChannel"),
+      adcPreset: document.getElementById("adcPreset"),
+      filter: document.getElementById("filter"),
+      outputMode: document.getElementById("outputMode"),
+      avg: document.getElementById("avg"),
+      output: document.getElementById("output"),
+      view: document.getElementById("view"),
+      mode: document.getElementById("mode"),
+      draw: document.getElementById("draw"),
+      sample: document.getElementById("sample"),
+      window: document.getElementById("window"),
+      windowText: document.getElementById("windowText"),
+      yspan: document.getElementById("yspan"),
+      yspanText: document.getElementById("yspanText"),
+      envelope: document.getElementById("envelope"),
+      scope: document.getElementById("scope"),
+      grid: document.getElementById("grid"),
+      trace: document.getElementById("trace"),
+      status: document.getElementById("status"),
+      reading: document.getElementById("reading"),
+      rate: document.getElementById("rate"),
+      dropped: document.getElementById("dropped"),
+      reply: document.getElementById("reply")
+    };
+
+    const gridCtx = els.grid.getContext("2d");
+    const traceCtx = els.trace.getContext("2d");
+    const encoder = new TextEncoder();
+    const decoder = new TextDecoder();
+
+    let port = null;
+    let reader = null;
+    let readLoopPromise = null;
+    let readBuffer = "";
+    let commandChain = Promise.resolve();
+    let pending = [];
+    let samples = [];
+    let dropped = 0;
+    let lastStatusAt = 0;
+    let lastCount = 0;
+    let lastRateAt = performance.now();
+    let gridDirty = true;
+    let traceDirty = true;
+    let resumeDataTimer = null;
+
+    const state = {
+      connected: false,
+      paused: false,
+      acceptData: true,
+      analogMode: "100m",
+      adcChannel: "i1",
+      plotChannel: "i1",
+      adcPreset: "manual",
+      filter: "off",
+      outputMode: "avg",
+      avgN: 1,
+      outputHz: 1000,
+      view: "delta",
+      mode: "track",
+      draw: "raw",
+      sampleHz: 1000,
+      windowSec: 5,
+      ySpanMv: 2,
+      showEnvelope: false,
+      plotLeft: 72,
+      plotRight: 14,
+      plotTop: 12,
+      plotBottom: 28,
+      startMs: null,
+      sweepStartSec: 0,
+      zeroMv: null,
+      yCenterAbsMv: null,
+      latestMv: null,
+      latestDisplayMv: null,
+      latestData: null,
+      cssWidth: 0,
+      cssHeight: 0,
+      dpr: 1
+    };
+
+    function setStatus(text, kind) {
+      els.status.textContent = text;
+      els.status.className = kind || "";
+    }
+
+    function updateControls() {
+      els.pause.disabled = !state.connected;
+      els.zero.disabled = !state.connected;
+      els.clear.disabled = !state.connected;
+      els.statusButton.disabled = !state.connected;
+      els.pause.textContent = state.paused ? "Resume" : "Pause";
+      els.pause.classList.toggle("active", state.paused);
+      els.windowText.textContent = state.windowSec.toFixed(1) + "s";
+      els.yspanText.textContent = state.ySpanMv.toFixed(2) + "mV";
+      els.sample.disabled = state.filter !== "off";
+      els.avg.disabled = state.outputMode !== "avg";
+      els.output.disabled = state.outputMode !== "rate";
+      els.output.value = String(state.outputHz);
+      els.avg.value = String(state.avgN);
+      els.sample.value = String(state.sampleHz);
+    }
+
+    function resizeCanvases() {
+      const rect = els.scope.getBoundingClientRect();
+      const dpr = window.devicePixelRatio || 1;
+      state.cssWidth = Math.max(100, rect.width);
+      state.cssHeight = Math.max(100, rect.height);
+      state.dpr = dpr;
+
+      for (const canvas of [els.grid, els.trace]) {
+        canvas.width = Math.floor(state.cssWidth * dpr);
+        canvas.height = Math.floor(state.cssHeight * dpr);
+        const ctx = canvas.getContext("2d");
+        ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      }
+      gridDirty = true;
+      traceDirty = true;
+      renderFrame();
+    }
+
+    function yCenterMv() {
+      if (state.view === "delta") return 0;
+      if (state.yCenterAbsMv !== null) return state.yCenterAbsMv;
+      return 0;
+    }
+
+    function yToCanvas(value) {
+      const center = yCenterMv();
+      const min = center - state.ySpanMv / 2;
+      const max = center + state.ySpanMv / 2;
+      const plotHeight = state.cssHeight - state.plotTop - state.plotBottom;
+      return state.plotTop + (1 - ((value - min) / (max - min))) * plotHeight;
+    }
+
+    function plotWidth() {
+      return Math.max(20, state.cssWidth - state.plotLeft - state.plotRight);
+    }
+
+    function plotHeight() {
+      return Math.max(20, state.cssHeight - state.plotTop - state.plotBottom);
+    }
+
+    function drawGrid() {
+      const w = state.cssWidth;
+      const h = state.cssHeight;
+      const left = state.plotLeft;
+      const right = w - state.plotRight;
+      const top = state.plotTop;
+      const bottom = h - state.plotBottom;
+      const pw = plotWidth();
+      const ph = plotHeight();
+      gridCtx.clearRect(0, 0, w, h);
+      gridCtx.fillStyle = "#ffffff";
+      gridCtx.fillRect(0, 0, w, h);
+
+      gridCtx.strokeStyle = "#e3e7ec";
+      gridCtx.lineWidth = 1;
+      gridCtx.beginPath();
+      for (let i = 0; i <= 10; i++) {
+        const x = left + (pw * i) / 10;
+        gridCtx.moveTo(x, top);
+        gridCtx.lineTo(x, bottom);
+      }
+      for (let i = 0; i <= 8; i++) {
+        const y = top + (ph * i) / 8;
+        gridCtx.moveTo(left, y);
+        gridCtx.lineTo(right, y);
+      }
+      gridCtx.stroke();
+
+      gridCtx.strokeStyle = "#ccd3db";
+      gridCtx.beginPath();
+      gridCtx.rect(left, top, pw, ph);
+      gridCtx.moveTo(left, top + ph / 2);
+      gridCtx.lineTo(right, top + ph / 2);
+      gridCtx.stroke();
+
+      const center = yCenterMv();
+      gridCtx.fillStyle = "#627083";
+      gridCtx.font = "12px -apple-system, BlinkMacSystemFont, Segoe UI, sans-serif";
+      gridCtx.textAlign = "right";
+      gridCtx.textBaseline = "middle";
+      gridCtx.fillText((center + state.ySpanMv / 2).toFixed(3), left - 8, top);
+      gridCtx.fillText(center.toFixed(3), left - 8, top + ph / 2);
+      gridCtx.fillText((center - state.ySpanMv / 2).toFixed(3), left - 8, bottom);
+      gridCtx.save();
+      gridCtx.translate(14, top + ph / 2);
+      gridCtx.rotate(-Math.PI / 2);
+      gridCtx.textAlign = "center";
+      gridCtx.fillText(state.view === "absolute" ? "mV" : "delta mV", 0, 0);
+      gridCtx.restore();
+      gridCtx.textAlign = "right";
+      gridCtx.textBaseline = "alphabetic";
+      gridCtx.fillText(state.windowSec.toFixed(1) + " s " + state.mode + " / " + state.plotChannel, right, h - 8);
+      gridCtx.textAlign = "left";
+    }
+
+    function clearTraceOnly() {
+      traceCtx.clearRect(0, 0, state.cssWidth, state.cssHeight);
+    }
+
+    function markDirty() {
+      traceDirty = true;
+    }
+
+    function markGridDirty() {
+      gridDirty = true;
+      traceDirty = true;
+    }
+
+    function resetTrace() {
+      state.startMs = null;
+      state.sweepStartSec = 0;
+      state.zeroMv = null;
+      state.yCenterAbsMv = null;
+      state.latestMv = null;
+      state.latestDisplayMv = null;
+      state.latestData = null;
+      pending = [];
+      samples = [];
+      markGridDirty();
+      clearTraceOnly();
+      updateReading();
+    }
+
+    function selectedValueMv(data) {
+      if (state.plotChannel === "i1") {
+        if (data.i1_n === 0) return null;
+        return data.i1_avg_uv / 1000;
+      }
+      if (data.i2_n === 0) return null;
+      return data.i2_avg_uv / 1000;
+    }
+
+    function dataMatchesCurrentConfig(data) {
+      if (data.filter !== state.filter) return false;
+      if (data.mode !== state.analogMode) return false;
+      return true;
+    }
+
+    function displayValue(valueMv) {
+      if (state.view === "absolute") return valueMv;
+      const zero = state.zeroMv === null ? valueMv : state.zeroMv;
+      return valueMv - zero;
+    }
+
+    function ingestSample(data) {
+      if (!dataMatchesCurrentConfig(data)) return;
+      const valueMv = selectedValueMv(data);
+      if (valueMv === null) return;
+
+      if (state.startMs === null) {
+        state.startMs = data.ms;
+        state.sweepStartSec = 0;
+      }
+      if (state.zeroMv === null && state.view === "delta") {
+        state.zeroMv = valueMv;
+      }
+      if (state.yCenterAbsMv === null && state.view === "absolute") {
+        state.yCenterAbsMv = valueMv;
+        markGridDirty();
+      }
+      state.latestMv = valueMv;
+      const displayMv = displayValue(valueMv);
+      state.latestDisplayMv = displayMv;
+      state.latestData = data;
+
+      const tSec = (data.ms - state.startMs) / 1000;
+      samples.push({ tSec, valueMv, displayMv });
+      trimSamples(tSec);
+      markDirty();
+    }
+
+    function trimSamples(latestSec) {
+      const keepAfter = Math.max(0, latestSec - Math.max(state.windowSec * 3, 10));
+      let drop = 0;
+      while (drop < samples.length && samples[drop].tSec < keepAfter) {
+        drop += 1;
+      }
+      if (drop > 0) samples.splice(0, drop);
+    }
+
+    function xToCanvas(tSec, startSec) {
+      return state.plotLeft + ((tSec - startSec) / state.windowSec) * plotWidth();
+    }
+
+    function visibleSamples() {
+      if (!samples.length) return { visible: [], startSec: 0 };
+      const latestSec = samples[samples.length - 1].tSec;
+      let startSec;
+      let endSec;
+
+      if (state.mode === "track") {
+        endSec = Math.max(state.windowSec, latestSec);
+        startSec = endSec - state.windowSec;
+      } else {
+        startSec = Math.floor(latestSec / state.windowSec) * state.windowSec;
+        endSec = startSec + state.windowSec;
+      }
+
+      const visible = [];
+      for (const sample of samples) {
+        if (sample.tSec >= startSec && sample.tSec <= endSec) {
+          visible.push(sample);
+        }
+      }
+      return { visible, startSec };
+    }
+
+    function visibleMeanMv() {
+      const { visible } = visibleSamples();
+      const source = visible.length ? visible : samples;
+      if (!source.length) return state.latestMv;
+      let sum = 0;
+      for (const sample of source) {
+        sum += sample.valueMv;
+      }
+      return sum / source.length;
+    }
+
+    function applyZeroFromWindow() {
+      const zero = visibleMeanMv();
+      if (zero === null || !Number.isFinite(zero)) return;
+      state.zeroMv = zero;
+      state.startMs = null;
+      pending = [];
+      samples = [];
+      state.latestDisplayMv = state.latestMv === null ? null : displayValue(state.latestMv);
+      markGridDirty();
+      clearTraceOnly();
+      updateReading();
+    }
+
+    function buildPixelBuckets(visible, startSec) {
+      const width = Math.max(1, Math.floor(plotWidth()));
+      const buckets = new Array(width);
+      for (const sample of visible) {
+        const x = xToCanvas(sample.tSec, startSec);
+        const px = Math.max(0, Math.min(width - 1, Math.round(x - state.plotLeft)));
+        const y = yToCanvas(sample.displayMv);
+        if (!Number.isFinite(y)) continue;
+        const bucket = buckets[px];
+        if (bucket) {
+          bucket.minY = Math.min(bucket.minY, y);
+          bucket.maxY = Math.max(bucket.maxY, y);
+          bucket.lastY = y;
+          bucket.sumY += y;
+          bucket.count += 1;
+        } else {
+          buckets[px] = { x, minY: y, maxY: y, lastY: y, sumY: y, count: 1 };
+        }
+      }
+      return buckets.filter(Boolean);
+    }
+
+    function drawTraceFrame() {
+      clearTraceOnly();
+      const { visible, startSec } = visibleSamples();
+      if (!visible.length) return;
+
+      traceCtx.save();
+      traceCtx.beginPath();
+      traceCtx.rect(state.plotLeft, state.plotTop, plotWidth(), plotHeight());
+      traceCtx.clip();
+
+      if (state.showEnvelope || state.draw === "average") {
+        const points = buildPixelBuckets(visible, startSec);
+        if (!points.length) {
+          traceCtx.restore();
+          return;
+        }
+
+        traceCtx.strokeStyle = "rgba(0, 104, 183, 0.16)";
+        traceCtx.lineWidth = 1;
+        traceCtx.beginPath();
+        for (const point of points) {
+          if (point.maxY - point.minY > 1.5) {
+            traceCtx.moveTo(point.x, point.minY);
+            traceCtx.lineTo(point.x, point.maxY);
+          }
+        }
+        traceCtx.stroke();
+
+        if (state.draw === "average") {
+          traceCtx.strokeStyle = "#0068b7";
+          traceCtx.lineWidth = 1.4;
+          traceCtx.beginPath();
+          points.forEach((point, index) => {
+            const y = point.sumY / point.count;
+            if (index === 0) {
+              traceCtx.moveTo(point.x, y);
+            } else {
+              traceCtx.lineTo(point.x, y);
+            }
+          });
+          traceCtx.stroke();
+          traceCtx.restore();
+          return;
+        }
+      }
+
+      traceCtx.strokeStyle = "#0068b7";
+      traceCtx.lineWidth = 1.15;
+      traceCtx.beginPath();
+      visible.forEach((sample, index) => {
+        const x = xToCanvas(sample.tSec, startSec);
+        const y = yToCanvas(sample.displayMv);
+        if (index === 0) {
+          traceCtx.moveTo(x, y);
+        } else {
+          traceCtx.lineTo(x, y);
+        }
+      });
+      traceCtx.stroke();
+      traceCtx.restore();
+    }
+
+    function renderFrame() {
+      if (gridDirty) {
+        drawGrid();
+        gridDirty = false;
+      }
+      if (traceDirty) {
+        drawTraceFrame();
+        traceDirty = false;
+      }
+    }
+
+    function parseDataLine(line) {
+      const parts = line.trim().split(",");
+      if (parts.length !== DATA_FIELDS.length || parts[0] !== "DATA") return null;
+      const data = {};
+      for (let i = 0; i < DATA_FIELDS.length; i++) {
+        const key = DATA_FIELDS[i];
+        if (key === "tag" || key === "mode" || key === "filter") {
+          data[key] = parts[i];
+        } else {
+          const value = Number.parseInt(parts[i], 10);
+          if (!Number.isFinite(value)) return null;
+          data[key] = value;
+        }
+      }
+      return data;
+    }
+
+    function isReplyLine(line) {
+      return /^(OK|ERR|WARN|STATUS|Board3 CLY commands:)/.test(line);
+    }
+
+    function noteReply(line) {
+      if (!line) return;
+      els.reply.textContent = "reply: " + line;
+    }
+
+    function queueData(data) {
+      if (!data) return;
+      if (!state.acceptData) return;
+      pending.push(data);
+      if (pending.length > 20000) {
+        pending.splice(0, pending.length - 20000);
+        dropped += 1;
+      }
+    }
+
+    function rejectStaleData(ms = 200) {
+      state.acceptData = false;
+      pending = [];
+      if (resumeDataTimer !== null) clearTimeout(resumeDataTimer);
+      resumeDataTimer = setTimeout(() => {
+        pending = [];
+        state.acceptData = true;
+        resumeDataTimer = null;
+      }, ms);
+    }
+
+    function animationLoop() {
+      let count = 0;
+      while (!state.paused && pending.length && count < 5000) {
+        ingestSample(pending.shift());
+        count += 1;
+      }
+      renderFrame();
+
+      const now = performance.now();
+      if (now - lastStatusAt > 100) {
+        updateReading();
+        lastStatusAt = now;
+      }
+      requestAnimationFrame(animationLoop);
+    }
+
+    function updateReading() {
+      if (!state.latestData || state.latestMv === null) {
+        els.reading.textContent = "value: --";
+        els.rate.textContent = "rate: --";
+      } else {
+        const display = state.latestDisplayMv !== null ? state.latestDisplayMv : displayValue(state.latestMv);
+        const unit = state.view === "absolute" ? "mV" : "delta mV";
+        els.reading.textContent = `${state.plotChannel}: ${display.toFixed(4)} ${unit}`;
+        els.rate.textContent = `rate: sample ${state.latestData.sample_hz}Hz / output ${state.latestData.output_hz}Hz / avg ${state.latestData.samples}`;
+      }
+
+      const now = performance.now();
+      if (now - lastRateAt > 1000) {
+        const count = state.latestData ? state.latestData.output_count : 0;
+        const rate = count - lastCount;
+        lastCount = count;
+        lastRateAt = now;
+        els.rate.textContent += ` / seen ${rate}Hz`;
+      }
+      els.dropped.textContent = `dropped: ${dropped}`;
+    }
+
+    window.__scopeTest = {
+      pushData(data) {
+        queueData(data);
+      },
+      parseDataLine,
+      renderFrame,
+      resetTrace,
+      state
+    };
+
+    function startDemoIfRequested() {
+      const params = new URLSearchParams(window.location.search);
+      if (!params.has("demo")) return;
+
+      state.connected = true;
+      els.connect.disabled = true;
+      els.connect.textContent = "Demo";
+      setStatus("demo data", "good");
+      noteReply("demo mode");
+      updateControls();
+      resetTrace();
+
+      const baseMs = 1000000;
+      let index = 0;
+      setInterval(() => {
+        const batch = 16;
+        for (let n = 0; n < batch; n++) {
+          const i1Uv = Math.round(650 * Math.sin(index / 140) + 120 * Math.sin(index / 11));
+          const i2Uv = Math.round(420 * Math.cos(index / 180) + 80 * Math.sin(index / 17));
+          const line = `DATA,${baseMs + index},100m,0,${i1Uv},${i2Uv},0,0,2,1,1,1,1000,1000,1000,1000,off,${index},${index}`;
+          queueData(parseDataLine(line));
+          index += 1;
+        }
+      }, 16);
+    }
+
+    async function sendCommand(command) {
+      if (!port || !port.writable) return;
+      const text = command.trim();
+      commandChain = commandChain.then(async () => {
+        const writer = port.writable.getWriter();
+        try {
+          await writer.write(encoder.encode(text + "\n"));
+          noteReply("sent " + text);
+        } finally {
+          writer.releaseLock();
+        }
+      });
+      return commandChain;
+    }
+
+    function clampInt(value, min, max, fallback) {
+      const parsed = Number.parseInt(value, 10);
+      if (!Number.isFinite(parsed)) return fallback;
+      return Math.max(min, Math.min(max, parsed));
+    }
+
+    function effectiveSampleHz() {
+      return state.filter === "off" ? state.sampleHz : FILTER_SAMPLE_RATES[state.filter];
+    }
+
+    function clampOutputSettings() {
+      state.sampleHz = state.filter === "off" ? clampInt(els.sample.value, 20, 2000, state.sampleHz) : effectiveSampleHz();
+      const sample = effectiveSampleHz();
+      state.avgN = clampInt(els.avg.value, 1, 400, state.avgN);
+      state.outputHz = clampInt(els.output.value, 1, 1000, state.outputHz);
+      if (state.outputMode === "avg") {
+        state.outputHz = Math.max(1, Math.floor(sample / state.avgN));
+      } else {
+        state.outputHz = Math.min(state.outputHz, sample);
+        state.avgN = Math.max(1, Math.round(sample / state.outputHz));
+      }
+      updateControls();
+    }
+
+    async function configureBoard() {
+      if (!state.connected) return;
+      clampOutputSettings();
+      rejectStaleData();
+      await sendCommand("stream off");
+      await sendCommand("mode " + state.analogMode);
+      await sendCommand("channel " + state.adcChannel);
+      if (state.filter === "off") {
+        await sendCommand("filter off");
+        if (state.adcPreset === "fast") {
+          await sendCommand("adc fast");
+        } else if (state.adcPreset === "quiet") {
+          await sendCommand("adc quiet");
+        }
+        await sendCommand("sample " + state.sampleHz);
+      } else {
+        await sendCommand("filter " + state.filter);
+      }
+      if (state.outputMode === "rate") {
+        await sendCommand("rate " + state.outputHz);
+      } else {
+        await sendCommand("avg " + state.avgN);
+      }
+      rejectStaleData(250);
+      if (!state.paused) await sendCommand("stream on");
+    }
+
+    async function readLoop() {
+      while (port && port.readable) {
+        reader = port.readable.getReader();
+        try {
+          while (true) {
+            const { value, done } = await reader.read();
+            if (done) break;
+            readBuffer += decoder.decode(value, { stream: true });
+            let index;
+            while ((index = readBuffer.indexOf("\n")) >= 0) {
+              const line = readBuffer.slice(0, index).trim();
+              readBuffer = readBuffer.slice(index + 1);
+              const data = parseDataLine(line);
+              if (data) {
+                queueData(data);
+              } else if (isReplyLine(line)) {
+                noteReply(line);
+              }
+            }
+          }
+        } catch (err) {
+          if (state.connected) setStatus("read error", "bad");
+          console.error(err);
+        } finally {
+          reader.releaseLock();
+          reader = null;
+        }
+      }
+    }
+
+    async function connect() {
+      if (!("serial" in navigator)) {
+        setStatus("Web Serial unavailable; use Chrome or Edge", "bad");
+        return;
+      }
+
+      try {
+        port = await navigator.serial.requestPort();
+        await port.open({ baudRate: 115200 });
+        state.connected = true;
+        state.paused = false;
+        els.connect.textContent = "Disconnect";
+        setStatus("connected", "good");
+        noteReply("connected");
+        updateControls();
+        resetTrace();
+        readLoopPromise = readLoop();
+        await configureBoard();
+      } catch (err) {
+        setStatus("connect failed", "bad");
+        console.error(err);
+      }
+    }
+
+    async function disconnect() {
+      try {
+        state.connected = false;
+        await sendCommand("stream off");
+        if (reader) await reader.cancel();
+        if (readLoopPromise) await readLoopPromise.catch(() => {});
+        if (port) await port.close();
+      } catch (err) {
+        console.error(err);
+      } finally {
+        port = null;
+        reader = null;
+        readLoopPromise = null;
+        els.connect.textContent = "Connect";
+        setStatus("disconnected", "");
+        noteReply("disconnected");
+        updateControls();
+      }
+    }
+
+    els.connect.addEventListener("click", () => {
+      if (state.connected) disconnect();
+      else connect();
+    });
+
+    els.pause.addEventListener("click", async () => {
+      state.paused = !state.paused;
+      await sendCommand(state.paused ? "stream off" : "stream on");
+      updateControls();
+    });
+
+    els.zero.addEventListener("click", applyZeroFromWindow);
+
+    els.clear.addEventListener("click", resetTrace);
+
+    els.statusButton.addEventListener("click", async () => {
+      await sendCommand("status");
+    });
+
+    els.helpButton.addEventListener("click", () => {
+      els.helpOverlay.hidden = false;
+    });
+
+    els.helpClose.addEventListener("click", () => {
+      els.helpOverlay.hidden = true;
+    });
+
+    els.helpOverlay.addEventListener("click", (event) => {
+      if (event.target === els.helpOverlay) els.helpOverlay.hidden = true;
+    });
+
+    window.addEventListener("keydown", (event) => {
+      if (event.key === "Escape") els.helpOverlay.hidden = true;
+    });
+
+    els.analogMode.addEventListener("change", async () => {
+      state.analogMode = els.analogMode.value;
+      resetTrace();
+      await configureBoard();
+    });
+
+    els.adcChannel.addEventListener("change", async () => {
+      state.adcChannel = els.adcChannel.value;
+      if (state.adcChannel !== "both") {
+        state.plotChannel = state.adcChannel;
+        els.plotChannel.value = state.plotChannel;
+      }
+      resetTrace();
+      await configureBoard();
+    });
+
+    els.plotChannel.addEventListener("change", async () => {
+      state.plotChannel = els.plotChannel.value;
+      if (state.adcChannel !== "both" && state.adcChannel !== state.plotChannel) {
+        state.adcChannel = state.plotChannel;
+        els.adcChannel.value = state.adcChannel;
+        resetTrace();
+        await configureBoard();
+        return;
+      }
+      resetTrace();
+    });
+
+    els.adcPreset.addEventListener("change", async () => {
+      state.adcPreset = els.adcPreset.value;
+      if (state.adcPreset === "fast") {
+        state.filter = "off";
+        state.sampleHz = 1000;
+      } else if (state.adcPreset === "quiet") {
+        state.filter = "off";
+        state.sampleHz = 20;
+      }
+      els.filter.value = state.filter;
+      els.sample.value = String(state.sampleHz);
+      clampOutputSettings();
+      resetTrace();
+      await configureBoard();
+    });
+
+    els.filter.addEventListener("change", async () => {
+      state.filter = els.filter.value;
+      state.adcPreset = "manual";
+      els.adcPreset.value = state.adcPreset;
+      if (state.filter !== "off") {
+        state.sampleHz = FILTER_SAMPLE_RATES[state.filter];
+      } else {
+        state.sampleHz = clampInt(els.sample.value, 20, 2000, 1000);
+      }
+      updateControls();
+      resetTrace();
+      await configureBoard();
+    });
+
+    async function applyOutputModeChange() {
+      state.outputMode = els.outputMode.value;
+      clampOutputSettings();
+      resetTrace();
+      await configureBoard();
+    }
+
+    async function applyAvgChange() {
+      state.avgN = clampInt(els.avg.value, 1, 400, 1);
+      state.outputMode = "avg";
+      els.outputMode.value = state.outputMode;
+      clampOutputSettings();
+      resetTrace();
+      await configureBoard();
+    }
+
+    async function applyOutputChange() {
+      state.outputHz = clampInt(els.output.value, 1, 1000, 1000);
+      state.outputMode = "rate";
+      els.outputMode.value = state.outputMode;
+      clampOutputSettings();
+      resetTrace();
+      await configureBoard();
+    }
+
+    els.outputMode.addEventListener("change", applyOutputModeChange);
+    els.avg.addEventListener("change", applyAvgChange);
+    els.output.addEventListener("change", applyOutputChange);
+
+    els.output.addEventListener("keydown", (event) => {
+      if (event.key === "Enter") {
+        event.preventDefault();
+        applyOutputChange();
+      }
+    });
+
+    els.view.addEventListener("change", () => {
+      state.view = els.view.value;
+      if (state.latestMv !== null) {
+        state.zeroMv = visibleMeanMv();
+        state.yCenterAbsMv = state.latestMv;
+      }
+      state.latestDisplayMv = null;
+      pending = [];
+      samples = [];
+      markGridDirty();
+      clearTraceOnly();
+    });
+
+    els.mode.addEventListener("change", () => {
+      state.mode = els.mode.value;
+      markGridDirty();
+      clearTraceOnly();
+    });
+
+    els.draw.addEventListener("change", () => {
+      state.draw = els.draw.value;
+      markDirty();
+    });
+
+    async function applySampleChange() {
+      state.sampleHz = clampInt(els.sample.value, 20, 2000, 1000);
+      state.adcPreset = "manual";
+      els.adcPreset.value = state.adcPreset;
+      els.sample.value = String(state.sampleHz);
+      if (state.filter === "off") {
+        clampOutputSettings();
+        resetTrace();
+        await configureBoard();
+      }
+    }
+
+    els.sample.addEventListener("change", applySampleChange);
+
+    els.sample.addEventListener("keydown", (event) => {
+      if (event.key === "Enter") {
+        event.preventDefault();
+        applySampleChange();
+      }
+    });
+
+    els.avg.addEventListener("keydown", (event) => {
+      if (event.key === "Enter") {
+        event.preventDefault();
+        applyAvgChange();
+      }
+    });
+
+    els.window.addEventListener("input", () => {
+      state.windowSec = Number.parseFloat(els.window.value);
+      updateControls();
+      markGridDirty();
+      clearTraceOnly();
+    });
+
+    els.yspan.addEventListener("input", () => {
+      state.ySpanMv = Number.parseFloat(els.yspan.value);
+      updateControls();
+      markGridDirty();
+      clearTraceOnly();
+    });
+
+    els.envelope.addEventListener("change", () => {
+      state.showEnvelope = els.envelope.checked;
+      markDirty();
+    });
+
+    window.addEventListener("resize", resizeCanvases);
+    navigator.serial?.addEventListener("disconnect", () => disconnect());
+
+    resizeCanvases();
+    updateControls();
+    startDemoIfRequested();
+    animationLoop();
+  </script>
+</body>
+</html>
