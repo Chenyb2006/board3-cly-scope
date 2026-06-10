@@ -129,12 +129,24 @@
       padding: 0;
     }
 
+    #window {
+      width: 180px;
+    }
+
     #yspan {
       width: 220px;
     }
 
     #yspanValue {
       width: 84px;
+    }
+
+    #recordStatus {
+      color: var(--muted);
+    }
+
+    #markLabel {
+      width: 118px;
     }
 
     input:disabled,
@@ -336,14 +348,43 @@
 
         <div class="group">
           <label for="window">Window</label>
-          <input id="window" type="range" min="0.5" max="30" step="0.5" value="5">
+          <input id="window" type="range" min="0.5" max="600" step="0.5" value="5">
           <span id="windowText">5.0s</span>
         </div>
 
         <div class="group">
           <label for="yspan">Y span</label>
-          <input id="yspan" type="range" min="0.02" max="100" step="0.01" value="2">
-          <input id="yspanValue" type="number" min="0.02" max="100" step="0.01" value="2.00">
+          <input id="yspan" type="range" min="0.02" max="1000" step="0.01" value="2">
+          <input id="yspanValue" type="number" min="0.02" max="1000" step="0.01" value="2.00">
+        </div>
+
+        <div class="group">
+          <label for="recordMode">Record every</label>
+          <select id="recordMode">
+            <option value="0.1">0.1s</option>
+            <option value="0.5" selected>0.5s</option>
+            <option value="1">1s</option>
+            <option value="5">5s</option>
+          </select>
+          <button id="recordToggle" disabled>Start</button>
+          <button id="recordClear" disabled>Clear</button>
+        </div>
+
+        <div class="group">
+          <label for="markLabel">Mark</label>
+          <input id="markLabel" type="text" value="开始实验" maxlength="40">
+          <button id="markRecord" disabled>Mark</button>
+        </div>
+
+        <div class="group">
+          <label for="exportKind">Export</label>
+          <select id="exportKind">
+            <option value="png" selected>Curve PNG</option>
+            <option value="csv">CSV</option>
+            <option value="json">JSON</option>
+            <option value="report">Report</option>
+          </select>
+          <button id="exportRecord" disabled>Save</button>
         </div>
       </div>
 
@@ -360,6 +401,7 @@
       <span id="reading">value: --</span>
       <span id="rate">rate: --</span>
       <span id="dropped">dropped: 0</span>
+      <span id="recordStatus">record: --</span>
     </div>
   </main>
 
@@ -399,6 +441,12 @@
           <h2>画法</h2>
           <p><kbd>Raw</kbd> 逐点连线，是默认调试模式。<kbd>Average</kbd> 只做显示平均，不改变板子采样和串口数据。</p>
         </section>
+        <section class="help-section">
+          <h2>录制和导出</h2>
+          <p><kbd>Record every</kbd> 按固定时间间隔记录粗略曲线点，每个点是这一小段时间内的均值和峰值范围，不保存每个原始采样点。</p>
+          <p><kbd>Mark</kbd> 会把当前录制时间和标签记下来，实时图和导出的曲线 PNG 上都会显示竖线标记。</p>
+          <p><kbd>Export</kbd> 默认保存曲线 PNG，也可保存粗略曲线的 CSV、JSON 或 Markdown 实验报告。</p>
+        </section>
       </div>
     </section>
   </div>
@@ -421,6 +469,17 @@
     ];
 
     const FILTER_SAMPLE_RATES = { "50": 20, "60": 20, "50_60": 20 };
+    const MAX_WINDOW_SEC = 600;
+    const MAX_Y_SPAN_MV = 1000;
+    const RETAIN_WINDOW_MULTIPLIER = 1.25;
+    const RETAIN_MIN_SEC = 30;
+    const RECORD_FIELDS = [
+      "index", "elapsed_s", "board_ms", "wall_time_iso", "mode", "filter",
+      "adc_channel", "plot_channel", "view", "value_mv", "display_mv",
+      "i1_mv", "i2_mv", "i1_n", "i2_n", "sample_hz", "output_hz",
+      "samples", "raw_count", "output_count", "display_min_mv", "display_max_mv", "markers"
+    ];
+    const MARKER_FIELDS = ["index", "elapsed_s", "board_ms", "wall_time_iso", "label", "value_mv", "display_mv"];
     const els = {
       connect: document.getElementById("connect"),
       pause: document.getElementById("pause"),
@@ -441,13 +500,21 @@
       windowText: document.getElementById("windowText"),
       yspan: document.getElementById("yspan"),
       yspanValue: document.getElementById("yspanValue"),
+      recordMode: document.getElementById("recordMode"),
+      recordToggle: document.getElementById("recordToggle"),
+      recordClear: document.getElementById("recordClear"),
+      markLabel: document.getElementById("markLabel"),
+      markRecord: document.getElementById("markRecord"),
+      exportKind: document.getElementById("exportKind"),
+      exportRecord: document.getElementById("exportRecord"),
       scope: document.getElementById("scope"),
       grid: document.getElementById("grid"),
       trace: document.getElementById("trace"),
       status: document.getElementById("status"),
       reading: document.getElementById("reading"),
       rate: document.getElementById("rate"),
-      dropped: document.getElementById("dropped")
+      dropped: document.getElementById("dropped"),
+      recordStatus: document.getElementById("recordStatus")
     };
 
     const gridCtx = els.grid.getContext("2d");
@@ -469,6 +536,19 @@
     let gridDirty = true;
     let traceDirty = true;
     let resumeDataTimer = null;
+    let lastObjectUrl = null;
+
+    const recording = {
+      active: false,
+      intervalSec: 0.5,
+      startedAt: null,
+      stoppedAt: null,
+      startMs: null,
+      rows: [],
+      bucket: null,
+      markers: [],
+      config: null
+    };
 
     const state = {
       connected: false,
@@ -507,17 +587,45 @@
       els.status.className = kind || "";
     }
 
+    function formatDuration(sec) {
+      if (!Number.isFinite(sec) || sec < 0) return "--";
+      if (sec >= 60) {
+        const minutes = Math.floor(sec / 60);
+        const seconds = Math.floor(sec % 60);
+        return `${minutes}m${String(seconds).padStart(2, "0")}s`;
+      }
+      return `${sec.toFixed(sec >= 10 ? 1 : 2)}s`;
+    }
+
+    function formatWindowText(sec) {
+      if (sec >= 60) {
+        const minutes = Math.floor(sec / 60);
+        const seconds = Math.round(sec % 60);
+        return seconds ? `${minutes}m${String(seconds).padStart(2, "0")}s` : `${minutes}min`;
+      }
+      return sec.toFixed(1) + "s";
+    }
+
     function updateControls() {
+      const recordPointCount = recording.rows.length + (recording.bucket && recording.bucket.rawCount > 0 ? 1 : 0);
       els.pause.disabled = !state.connected;
       els.zero.disabled = !state.connected;
       els.clear.disabled = !state.connected;
+      els.recordToggle.disabled = !state.connected && !recording.active;
+      els.recordClear.disabled = recording.active || recordPointCount === 0;
+      els.recordMode.disabled = recording.active;
+      els.markRecord.disabled = !recording.active || recording.startMs === null;
+      els.exportRecord.disabled = recordPointCount === 0;
       els.pause.textContent = state.paused ? "Resume" : "Pause";
       els.pause.classList.toggle("active", state.paused);
-      els.windowText.textContent = state.windowSec.toFixed(1) + "s";
+      els.recordToggle.textContent = recording.active ? "Stop" : "Start";
+      els.recordToggle.classList.toggle("active", recording.active);
+      els.windowText.textContent = formatWindowText(state.windowSec);
       els.yspan.value = String(state.ySpanMv);
       els.yspanValue.value = state.ySpanMv.toFixed(2);
       els.sample.disabled = state.filter !== "off";
       els.sample.value = String(state.sampleHz);
+      updateRecordStatus();
     }
 
     function resizeCanvases() {
@@ -611,7 +719,7 @@
       gridCtx.restore();
       gridCtx.textAlign = "right";
       gridCtx.textBaseline = "alphabetic";
-      gridCtx.fillText(state.windowSec.toFixed(1) + " s " + state.mode + " / " + state.plotChannel, right, h - 8);
+      gridCtx.fillText(formatWindowText(state.windowSec) + " " + state.mode + " / " + state.plotChannel, right, h - 8);
       gridCtx.textAlign = "left";
     }
 
@@ -644,18 +752,20 @@
     }
 
     function selectedValueMv(data) {
-      if (state.plotChannel === "i1") {
-        if (data.i1_n === 0) return null;
-        return data.i1_avg_uv / 1000;
-      }
-      if (data.i2_n === 0) return null;
-      return data.i2_avg_uv / 1000;
+      return channelMv(data, state.plotChannel);
     }
 
     function dataMatchesCurrentConfig(data) {
       if (data.filter !== state.filter) return false;
       if (data.mode !== state.analogMode) return false;
       return true;
+    }
+
+    function channelMv(data, channel) {
+      if (channel === "i1") {
+        return data.i1_n === 0 ? null : data.i1_avg_uv / 1000;
+      }
+      return data.i2_n === 0 ? null : data.i2_avg_uv / 1000;
     }
 
     function displayValue(valueMv) {
@@ -667,7 +777,9 @@
     function ingestSample(data) {
       if (!dataMatchesCurrentConfig(data)) return;
       const valueMv = selectedValueMv(data);
-      if (valueMv === null) return;
+      if (valueMv === null) {
+        return;
+      }
 
       if (state.startMs === null) {
         state.startMs = data.ms;
@@ -687,12 +799,13 @@
 
       const tSec = (data.ms - state.startMs) / 1000;
       samples.push({ tSec, valueMv, displayMv });
+      recordSample(data, valueMv, displayMv);
       trimSamples(tSec);
       markDirty();
     }
 
     function trimSamples(latestSec) {
-      const keepAfter = Math.max(0, latestSec - Math.max(state.windowSec * 3, 10));
+      const keepAfter = Math.max(0, latestSec - Math.max(state.windowSec * RETAIN_WINDOW_MULTIPLIER, RETAIN_MIN_SEC));
       let drop = 0;
       while (drop < samples.length && samples[drop].tSec < keepAfter) {
         drop += 1;
@@ -752,6 +865,205 @@
       updateReading();
     }
 
+    function recordingConfigSnapshot() {
+      return {
+        analogMode: state.analogMode,
+        adcChannel: state.adcChannel,
+        plotChannel: state.plotChannel,
+        filter: state.filter,
+        sampleHz: effectiveSampleHz(),
+        outputHz: state.outputHz,
+        view: state.view,
+        scrollMode: state.mode,
+        draw: state.draw,
+        windowSec: state.windowSec,
+        ySpanMv: state.ySpanMv,
+        zeroMv: state.zeroMv,
+        yCenterAbsMv: state.yCenterAbsMv
+      };
+    }
+
+    function createRecordBucket(elapsedSec, data) {
+      return {
+        index: recording.rows.length + 1,
+        startElapsedSec: elapsedSec,
+        latestElapsedSec: elapsedSec,
+        board_ms: data.ms,
+        wall_time_iso: new Date().toISOString(),
+        mode: data.mode,
+        filter: data.filter,
+        adc_channel: state.adcChannel,
+        plot_channel: state.plotChannel,
+        view: state.view,
+        valueSum: 0,
+        displaySum: 0,
+        displayMin: Infinity,
+        displayMax: -Infinity,
+        i1Sum: 0,
+        i2Sum: 0,
+        i1Count: 0,
+        i2Count: 0,
+        rawCount: 0,
+        samples: 0,
+        sample_hz: data.sample_hz,
+        output_hz: data.output_hz,
+        output_count: data.output_count
+      };
+    }
+
+    function bucketToRow(bucket) {
+      const elapsed = (bucket.startElapsedSec + bucket.latestElapsedSec) / 2;
+      return {
+        index: bucket.index,
+        elapsed_s: elapsed,
+        board_ms: bucket.board_ms,
+        wall_time_iso: bucket.wall_time_iso,
+        mode: bucket.mode,
+        filter: bucket.filter,
+        adc_channel: bucket.adc_channel,
+        plot_channel: bucket.plot_channel,
+        view: bucket.view,
+        value_mv: bucket.rawCount ? bucket.valueSum / bucket.rawCount : null,
+        display_mv: bucket.rawCount ? bucket.displaySum / bucket.rawCount : null,
+        i1_mv: bucket.i1Count ? bucket.i1Sum / bucket.i1Count : null,
+        i2_mv: bucket.i2Count ? bucket.i2Sum / bucket.i2Count : null,
+        i1_n: bucket.i1Count,
+        i2_n: bucket.i2Count,
+        sample_hz: bucket.sample_hz,
+        output_hz: bucket.output_hz,
+        samples: bucket.samples,
+        raw_count: bucket.rawCount,
+        output_count: bucket.output_count,
+        display_min_mv: Number.isFinite(bucket.displayMin) ? bucket.displayMin : null,
+        display_max_mv: Number.isFinite(bucket.displayMax) ? bucket.displayMax : null
+      };
+    }
+
+    function commitRecordBucket() {
+      if (!recording.bucket || recording.bucket.rawCount === 0) {
+        recording.bucket = null;
+        return;
+      }
+      recording.rows.push(bucketToRow(recording.bucket));
+      recording.bucket = null;
+    }
+
+    function markerLabel() {
+      const label = els.markLabel.value.trim();
+      return label || `Mark ${recording.markers.length + 1}`;
+    }
+
+    function addMarker() {
+      if (!recording.active || recording.startMs === null || !state.latestData) return;
+      const elapsedSec = (state.latestData.ms - recording.startMs) / 1000;
+      const marker = {
+        index: recording.markers.length + 1,
+        elapsed_s: elapsedSec,
+        board_ms: state.latestData.ms,
+        wall_time_iso: new Date().toISOString(),
+        label: markerLabel(),
+        value_mv: state.latestMv,
+        display_mv: state.latestDisplayMv
+      };
+      recording.markers.push(marker);
+      markDirty();
+      updateRecordStatus();
+    }
+
+    function addToRecordBucket(data, valueMv, displayMv) {
+      if (recording.startMs === null) recording.startMs = data.ms;
+      const elapsedSec = (data.ms - recording.startMs) / 1000;
+      if (!recording.bucket) {
+        recording.bucket = createRecordBucket(elapsedSec, data);
+      }
+      if (elapsedSec - recording.bucket.startElapsedSec >= recording.intervalSec) {
+        commitRecordBucket();
+        recording.bucket = createRecordBucket(elapsedSec, data);
+      }
+
+      const bucket = recording.bucket;
+      bucket.latestElapsedSec = elapsedSec;
+      bucket.board_ms = data.ms;
+      bucket.wall_time_iso = new Date().toISOString();
+      bucket.sample_hz = data.sample_hz;
+      bucket.output_hz = data.output_hz;
+      bucket.output_count = data.output_count;
+      bucket.valueSum += valueMv;
+      bucket.displaySum += displayMv;
+      bucket.displayMin = Math.min(bucket.displayMin, displayMv);
+      bucket.displayMax = Math.max(bucket.displayMax, displayMv);
+      bucket.rawCount += 1;
+      bucket.samples += data.samples;
+
+      const i1 = channelMv(data, "i1");
+      const i2 = channelMv(data, "i2");
+      if (i1 !== null) {
+        bucket.i1Sum += i1;
+        bucket.i1Count += 1;
+      }
+      if (i2 !== null) {
+        bucket.i2Sum += i2;
+        bucket.i2Count += 1;
+      }
+    }
+
+    function recordSample(data, valueMv, displayMv) {
+      if (!recording.active) return;
+      addToRecordBucket(data, valueMv, displayMv);
+      updateRecordStatus();
+    }
+
+    function clearRecording() {
+      recording.active = false;
+      recording.startedAt = null;
+      recording.stoppedAt = null;
+      recording.startMs = null;
+      recording.rows = [];
+      recording.bucket = null;
+      recording.markers = [];
+      recording.config = null;
+      updateControls();
+    }
+
+    function toggleRecording() {
+      if (recording.active) {
+        recording.active = false;
+        commitRecordBucket();
+        recording.stoppedAt = new Date();
+        updateControls();
+        return;
+      }
+      recording.active = true;
+      recording.intervalSec = Number.parseFloat(els.recordMode.value) || 0.5;
+      recording.startedAt = new Date();
+      recording.stoppedAt = null;
+      recording.startMs = null;
+      recording.rows = [];
+      recording.bucket = null;
+      recording.markers = [];
+      recording.config = recordingConfigSnapshot();
+      updateControls();
+    }
+
+    function updateRecordStatus() {
+      const count = recording.rows.length + (recording.bucket && recording.bucket.rawCount > 0 ? 1 : 0);
+      if (!recording.active && count === 0) {
+        els.recordStatus.textContent = "record: --";
+        return;
+      }
+
+      let duration = 0;
+      if (recording.bucket && recording.bucket.rawCount > 0) {
+        duration = recording.bucket.latestElapsedSec;
+      } else if (recording.rows.length) {
+        duration = recording.rows[recording.rows.length - 1].elapsed_s;
+      } else if (recording.startedAt) {
+        duration = (Date.now() - recording.startedAt.getTime()) / 1000;
+      }
+      const stateText = recording.active ? "recording" : "recorded";
+      els.recordStatus.textContent = `record: ${stateText} ${count} points / ${recording.markers.length} marks / ${formatDuration(duration)} / every ${formatDuration(recording.intervalSec)}`;
+    }
+
     function buildAveragePoints(visible, startSec) {
       const width = Math.max(1, Math.floor(plotWidth()));
       const stepSec = state.windowSec / width;
@@ -774,6 +1086,468 @@
           x: xToCanvas(bucket.tSec, startSec),
           y: bucket.sumY / bucket.count
         }));
+    }
+
+    function buildEnvelopePoints(visible, startSec) {
+      const width = Math.max(1, Math.floor(plotWidth()));
+      if (visible.length <= width * 3) {
+        return visible.map((sample) => ({
+          x: xToCanvas(sample.tSec, startSec),
+          y: yToCanvas(sample.displayMv)
+        }));
+      }
+
+      const buckets = Array.from({ length: width }, () => ({ minY: Infinity, maxY: -Infinity, x: 0, count: 0 }));
+      for (const sample of visible) {
+        const x = xToCanvas(sample.tSec, startSec);
+        const y = yToCanvas(sample.displayMv);
+        if (!Number.isFinite(x) || !Number.isFinite(y)) continue;
+        const index = Math.max(0, Math.min(width - 1, Math.floor(x - state.plotLeft)));
+        const bucket = buckets[index];
+        bucket.minY = Math.min(bucket.minY, y);
+        bucket.maxY = Math.max(bucket.maxY, y);
+        bucket.x += x;
+        bucket.count += 1;
+      }
+
+      const points = [];
+      for (const bucket of buckets) {
+        if (!bucket.count) continue;
+        const x = bucket.x / bucket.count;
+        points.push({ x, y: bucket.minY });
+        if (bucket.maxY !== bucket.minY) points.push({ x, y: bucket.maxY });
+      }
+      return points;
+    }
+
+    function numericCell(value) {
+      return value === null || value === undefined || !Number.isFinite(value) ? "" : Number(value).toFixed(6);
+    }
+
+    function csvEscape(value) {
+      if (value === null || value === undefined) return "";
+      const text = String(value);
+      return /[",\n\r]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text;
+    }
+
+    function recordRowsForExport() {
+      const rows = recording.rows.slice();
+      if (recording.bucket && recording.bucket.rawCount > 0) {
+        rows.push(bucketToRow(recording.bucket));
+      }
+      attachMarkersToRows(rows, recording.markers);
+      return rows;
+    }
+
+    function attachMarkersToRows(rows, markers) {
+      for (const row of rows) row.markers = "";
+      if (!rows.length || !markers.length) return rows;
+      for (const marker of markers) {
+        let best = rows[0];
+        let bestDistance = Math.abs(rows[0].elapsed_s - marker.elapsed_s);
+        for (const row of rows) {
+          const distance = Math.abs(row.elapsed_s - marker.elapsed_s);
+          if (distance < bestDistance) {
+            best = row;
+            bestDistance = distance;
+          }
+        }
+        best.markers = best.markers ? `${best.markers}; ${marker.label}` : marker.label;
+      }
+      return rows;
+    }
+
+    function recordDurationSec(rows = recordRowsForExport()) {
+      if (!rows.length) return 0;
+      return rows[rows.length - 1].elapsed_s;
+    }
+
+    function recordStats(rows = recordRowsForExport()) {
+      const values = rows
+        .map((row) => row.display_mv)
+        .filter((value) => value !== null && value !== undefined && Number.isFinite(value));
+      if (!values.length) return null;
+      let min = Infinity;
+      let max = -Infinity;
+      let sum = 0;
+      for (const value of values) {
+        min = Math.min(min, value);
+        max = Math.max(max, value);
+        sum += value;
+      }
+      const mean = sum / values.length;
+      let variance = 0;
+      for (const value of values) {
+        variance += (value - mean) * (value - mean);
+      }
+      return {
+        count: values.length,
+        min,
+        max,
+        mean,
+        rms: Math.sqrt(variance / values.length)
+      };
+    }
+
+    function buildCsv(rows = recordRowsForExport()) {
+      const lines = [RECORD_FIELDS.join(",")];
+      for (const row of rows) {
+        lines.push(RECORD_FIELDS.map((field) => csvEscape(row[field])).join(","));
+      }
+      if (recording.markers.length) {
+        lines.push("");
+        lines.push("# markers");
+        lines.push(MARKER_FIELDS.join(","));
+        for (const marker of recording.markers) {
+          lines.push(MARKER_FIELDS.map((field) => csvEscape(marker[field])).join(","));
+        }
+      }
+      return lines.join("\n") + "\n";
+    }
+
+    function buildJson(rows = recordRowsForExport()) {
+      return JSON.stringify({
+        device: "Board3 CLY",
+        exportedAt: new Date().toISOString(),
+        recording: {
+          intervalSec: recording.intervalSec,
+          active: recording.active,
+          startedAt: recording.startedAt ? recording.startedAt.toISOString() : null,
+          stoppedAt: recording.stoppedAt ? recording.stoppedAt.toISOString() : null,
+          points: rows.length,
+          markers: recording.markers.length,
+          durationSec: recordDurationSec(rows),
+          config: recording.config,
+          stats: recordStats(rows)
+        },
+        markers: recording.markers,
+        rows
+      }, null, 2);
+    }
+
+    function buildMarkdownReport(rows = recordRowsForExport()) {
+      const stats = recordStats(rows);
+      const config = recording.config || recordingConfigSnapshot();
+      const unit = config.view === "absolute" ? "mV" : "delta mV";
+      const lines = [
+        "# Board3 CLY Scope Experiment",
+        "",
+        `- Exported: ${new Date().toISOString()}`,
+        `- Recording interval: ${formatDuration(recording.intervalSec)}`,
+        `- Curve points: ${rows.length}`,
+        `- Markers: ${recording.markers.length}`,
+        `- Duration: ${formatDuration(recordDurationSec(rows))}`,
+        `- Analog: ${config.analogMode}`,
+        `- ADC: ${config.adcChannel}`,
+        `- Plot: ${config.plotChannel}`,
+        `- Filter: ${config.filter}`,
+        `- Sample: ${config.sampleHz} Hz`,
+        `- View: ${config.view}`,
+        `- Window: ${formatWindowText(config.windowSec)}`,
+        `- Y span: ${config.ySpanMv} mV`,
+        ""
+      ];
+
+      if (stats) {
+        lines.push(
+          "## Summary",
+          "",
+          `- Count: ${stats.count}`,
+          `- Mean: ${stats.mean.toFixed(6)} ${unit}`,
+          `- Min: ${stats.min.toFixed(6)}`,
+          `- Max: ${stats.max.toFixed(6)}`,
+          `- RMS noise: ${stats.rms.toFixed(6)}`,
+          ""
+        );
+      }
+
+      if (recording.markers.length) {
+        lines.push(
+          "## Markers",
+          "",
+          "| elapsed_s | label | display_mv |",
+          "|---:|---|---:|"
+        );
+        for (const marker of recording.markers) {
+          lines.push(`| ${numericCell(marker.elapsed_s)} | ${marker.label} | ${numericCell(marker.display_mv)} |`);
+        }
+        lines.push("");
+      }
+
+      lines.push(
+        "## Preview Rows",
+        "",
+        "| elapsed_s | display_mv | min_mv | max_mv | i1_mv | i2_mv | raw_count | markers |",
+        "|---:|---:|---:|---:|---:|---:|---:|---|"
+      );
+      for (const row of rows.slice(0, 60)) {
+        lines.push(`| ${numericCell(row.elapsed_s)} | ${numericCell(row.display_mv)} | ${numericCell(row.display_min_mv)} | ${numericCell(row.display_max_mv)} | ${numericCell(row.i1_mv)} | ${numericCell(row.i2_mv)} | ${row.raw_count ?? ""} | ${row.markers || ""} |`);
+      }
+      if (rows.length > 60) {
+        lines.push(`| ... | ${rows.length - 60} more points | | | | | | |`);
+      }
+      return lines.join("\n") + "\n";
+    }
+
+    function downloadText(filename, text, type) {
+      const blob = new Blob([text], { type });
+      downloadBlob(filename, blob);
+    }
+
+    function downloadBlob(filename, blob) {
+      if (lastObjectUrl) URL.revokeObjectURL(lastObjectUrl);
+      lastObjectUrl = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = lastObjectUrl;
+      link.download = filename;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+    }
+
+    function filenameBase() {
+      const stamp = new Date().toISOString().replace(/[:.]/g, "-");
+      return `board3-cly-curve-${stamp}`;
+    }
+
+    function downsampleRowsForCanvas(rows, width, field) {
+      const numericRows = rows.filter((row) => Number.isFinite(row.elapsed_s) && Number.isFinite(row[field]));
+      if (numericRows.length <= width * 2) return numericRows.map((row) => ({ x: row.elapsed_s, y: row[field] }));
+      const duration = Math.max(1e-9, recordDurationSec(numericRows));
+      const bucketCount = Math.max(1, Math.floor(width));
+      const buckets = Array.from({ length: bucketCount }, () => ({ min: Infinity, max: -Infinity, x: 0, count: 0 }));
+      for (const row of numericRows) {
+        const index = Math.max(0, Math.min(bucketCount - 1, Math.floor((row.elapsed_s / duration) * bucketCount)));
+        const bucket = buckets[index];
+        bucket.min = Math.min(bucket.min, row[field]);
+        bucket.max = Math.max(bucket.max, row[field]);
+        bucket.x += row.elapsed_s;
+        bucket.count += 1;
+      }
+      const points = [];
+      for (const bucket of buckets) {
+        if (!bucket.count) continue;
+        const x = bucket.x / bucket.count;
+        points.push({ x, y: bucket.min });
+        if (bucket.max !== bucket.min) points.push({ x, y: bucket.max });
+      }
+      return points;
+    }
+
+    function drawExportLine(ctx, rows, bounds, duration, yMin, yMax, field, color) {
+      const points = downsampleRowsForCanvas(rows, bounds.width, field);
+      if (!points.length) return;
+      const yRange = Math.max(1e-9, yMax - yMin);
+      ctx.strokeStyle = color;
+      ctx.lineWidth = 1.6;
+      ctx.beginPath();
+      points.forEach((point, index) => {
+        const x = bounds.left + (point.x / duration) * bounds.width;
+        const y = bounds.top + (1 - ((point.y - yMin) / yRange)) * bounds.height;
+        if (index === 0) ctx.moveTo(x, y);
+        else ctx.lineTo(x, y);
+      });
+      ctx.stroke();
+    }
+
+    function drawExportRange(ctx, rows, bounds, duration, yMin, yMax) {
+      const rangeRows = rows.filter((row) => (
+        Number.isFinite(row.elapsed_s) &&
+        Number.isFinite(row.display_min_mv) &&
+        Number.isFinite(row.display_max_mv)
+      ));
+      if (rangeRows.length < 2) return;
+      const yRange = Math.max(1e-9, yMax - yMin);
+      ctx.fillStyle = "rgba(0, 104, 183, 0.14)";
+      ctx.beginPath();
+      rangeRows.forEach((row, index) => {
+        const x = bounds.left + (row.elapsed_s / duration) * bounds.width;
+        const y = bounds.top + (1 - ((row.display_max_mv - yMin) / yRange)) * bounds.height;
+        if (index === 0) ctx.moveTo(x, y);
+        else ctx.lineTo(x, y);
+      });
+      for (let i = rangeRows.length - 1; i >= 0; i--) {
+        const row = rangeRows[i];
+        const x = bounds.left + (row.elapsed_s / duration) * bounds.width;
+        const y = bounds.top + (1 - ((row.display_min_mv - yMin) / yRange)) * bounds.height;
+        ctx.lineTo(x, y);
+      }
+      ctx.closePath();
+      ctx.fill();
+    }
+
+    function shortMarkerLabel(label) {
+      if (!label) return "";
+      return label.length > 18 ? label.slice(0, 17) + "..." : label;
+    }
+
+    function drawVisibleMarkers(startSec, endSec) {
+      const visibleMarkers = recording.markers.filter((marker) => marker.elapsed_s >= startSec && marker.elapsed_s <= endSec);
+      if (!visibleMarkers.length) return;
+
+      traceCtx.save();
+      traceCtx.beginPath();
+      traceCtx.rect(state.plotLeft, state.plotTop, plotWidth(), plotHeight());
+      traceCtx.clip();
+      traceCtx.font = "12px -apple-system, BlinkMacSystemFont, Segoe UI, sans-serif";
+      traceCtx.textAlign = "left";
+      traceCtx.textBaseline = "top";
+      for (const marker of visibleMarkers) {
+        const x = xToCanvas(marker.elapsed_s, startSec);
+        traceCtx.strokeStyle = "#b3261e";
+        traceCtx.lineWidth = 1;
+        traceCtx.setLineDash([4, 4]);
+        traceCtx.beginPath();
+        traceCtx.moveTo(x, state.plotTop);
+        traceCtx.lineTo(x, state.plotTop + plotHeight());
+        traceCtx.stroke();
+        traceCtx.setLineDash([]);
+        traceCtx.fillStyle = "rgba(255, 255, 255, 0.88)";
+        const label = shortMarkerLabel(marker.label);
+        const width = traceCtx.measureText(label).width + 8;
+        traceCtx.fillRect(Math.min(x + 4, state.plotLeft + plotWidth() - width), state.plotTop + 4, width, 18);
+        traceCtx.fillStyle = "#b3261e";
+        traceCtx.fillText(label, Math.min(x + 8, state.plotLeft + plotWidth() - width + 4), state.plotTop + 7);
+      }
+      traceCtx.restore();
+    }
+
+    function drawExportMarkers(ctx, bounds, duration) {
+      if (!recording.markers.length) return;
+      ctx.save();
+      ctx.font = "13px -apple-system, BlinkMacSystemFont, Segoe UI, sans-serif";
+      ctx.textAlign = "left";
+      ctx.textBaseline = "top";
+      for (const marker of recording.markers) {
+        if (!Number.isFinite(marker.elapsed_s)) continue;
+        const x = bounds.left + (marker.elapsed_s / duration) * bounds.width;
+        ctx.strokeStyle = "#b3261e";
+        ctx.lineWidth = 1;
+        ctx.setLineDash([5, 5]);
+        ctx.beginPath();
+        ctx.moveTo(x, bounds.top);
+        ctx.lineTo(x, bounds.top + bounds.height);
+        ctx.stroke();
+        ctx.setLineDash([]);
+        const label = shortMarkerLabel(marker.label);
+        const textWidth = ctx.measureText(label).width + 10;
+        const labelX = Math.min(x + 5, bounds.left + bounds.width - textWidth);
+        ctx.fillStyle = "rgba(255, 255, 255, 0.90)";
+        ctx.fillRect(labelX, bounds.top + 8, textWidth, 22);
+        ctx.fillStyle = "#b3261e";
+        ctx.fillText(label, labelX + 5, bounds.top + 13);
+      }
+      ctx.restore();
+    }
+
+    function renderLongPngBlob(callback) {
+      const rows = recordRowsForExport();
+      if (!rows.length) return;
+      const duration = Math.max(1, recordDurationSec(rows));
+      const width = Math.min(16000, Math.max(1400, Math.ceil(duration * 12), rows.length * 8));
+      const height = 900;
+      const canvas = document.createElement("canvas");
+      canvas.width = width;
+      canvas.height = height;
+      const ctx = canvas.getContext("2d");
+      const bounds = { left: 92, top: 112, width: width - 132, height: height - 188 };
+      let yMin = Infinity;
+      let yMax = -Infinity;
+      for (const row of rows) {
+        for (const field of ["display_mv", "display_min_mv", "display_max_mv"]) {
+          if (!Number.isFinite(row[field])) continue;
+          yMin = Math.min(yMin, row[field]);
+          yMax = Math.max(yMax, row[field]);
+        }
+      }
+      if (!Number.isFinite(yMin) || !Number.isFinite(yMax)) return;
+      const padding = Math.max(0.001, (yMax - yMin) * 0.08);
+      yMin -= padding;
+      yMax += padding;
+
+      ctx.fillStyle = "#ffffff";
+      ctx.fillRect(0, 0, width, height);
+      ctx.fillStyle = "#1d2733";
+      ctx.font = "24px -apple-system, BlinkMacSystemFont, Segoe UI, sans-serif";
+      ctx.fillText("Board3 CLY Curve Record", 28, 38);
+      ctx.font = "13px -apple-system, BlinkMacSystemFont, Segoe UI, sans-serif";
+      const meta = [
+        `${rows.length} curve points`,
+        formatDuration(duration),
+        `every ${formatDuration(recording.intervalSec)}`,
+        `ADC ${state.adcChannel}`,
+        `plot ${state.plotChannel}`,
+        `filter ${state.filter}`,
+        `${effectiveSampleHz()}Hz`,
+        `${state.view}`
+      ].join("  /  ");
+      ctx.fillStyle = "#627083";
+      ctx.fillText(meta, 28, 64);
+
+      ctx.strokeStyle = "#e3e7ec";
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      for (let i = 0; i <= 12; i++) {
+        const x = bounds.left + (bounds.width * i) / 12;
+        ctx.moveTo(x, bounds.top);
+        ctx.lineTo(x, bounds.top + bounds.height);
+      }
+      for (let i = 0; i <= 8; i++) {
+        const y = bounds.top + (bounds.height * i) / 8;
+        ctx.moveTo(bounds.left, y);
+        ctx.lineTo(bounds.left + bounds.width, y);
+      }
+      ctx.stroke();
+
+      ctx.strokeStyle = "#ccd3db";
+      ctx.strokeRect(bounds.left, bounds.top, bounds.width, bounds.height);
+      ctx.fillStyle = "#627083";
+      ctx.textAlign = "right";
+      ctx.textBaseline = "middle";
+      ctx.font = "12px -apple-system, BlinkMacSystemFont, Segoe UI, sans-serif";
+      for (let i = 0; i <= 8; i++) {
+        const value = yMax - ((yMax - yMin) * i) / 8;
+        const y = bounds.top + (bounds.height * i) / 8;
+        ctx.fillText(value.toFixed(4), bounds.left - 10, y);
+      }
+      ctx.textAlign = "center";
+      ctx.textBaseline = "top";
+      for (let i = 0; i <= 12; i++) {
+        const elapsed = (duration * i) / 12;
+        const x = bounds.left + (bounds.width * i) / 12;
+        ctx.fillText(formatDuration(elapsed), x, bounds.top + bounds.height + 12);
+      }
+
+      drawExportRange(ctx, rows, bounds, duration, yMin, yMax);
+      drawExportLine(ctx, rows, bounds, duration, yMin, yMax, "display_mv", "#0068b7");
+      drawExportMarkers(ctx, bounds, duration);
+
+      const stats = recordStats(rows);
+      if (stats) {
+        ctx.textAlign = "left";
+        ctx.fillStyle = "#627083";
+        ctx.fillText(`mean ${stats.mean.toFixed(6)}  min ${stats.min.toFixed(6)}  max ${stats.max.toFixed(6)}  rms ${stats.rms.toFixed(6)}`, bounds.left, height - 16);
+      }
+
+      canvas.toBlob((blob) => {
+        if (blob) callback(blob);
+      }, "image/png");
+    }
+
+    function exportRecording() {
+      const rows = recordRowsForExport();
+      if (!rows.length) return;
+      const base = filenameBase();
+      const kind = els.exportKind.value;
+      if (kind === "csv") {
+        downloadText(`${base}.csv`, buildCsv(rows), "text/csv;charset=utf-8");
+      } else if (kind === "json") {
+        downloadText(`${base}.json`, buildJson(rows), "application/json;charset=utf-8");
+      } else if (kind === "report") {
+        downloadText(`${base}.md`, buildMarkdownReport(rows), "text/markdown;charset=utf-8");
+      } else if (kind === "png") {
+        renderLongPngBlob((blob) => downloadBlob(`${base}.png`, blob));
+      }
     }
 
     function drawTraceFrame() {
@@ -805,23 +1579,24 @@
         });
         traceCtx.stroke();
         traceCtx.restore();
+        drawVisibleMarkers(startSec, startSec + state.windowSec);
         return;
       }
 
       traceCtx.strokeStyle = "#0068b7";
       traceCtx.lineWidth = 1.15;
       traceCtx.beginPath();
-      visible.forEach((sample, index) => {
-        const x = xToCanvas(sample.tSec, startSec);
-        const y = yToCanvas(sample.displayMv);
+      const points = buildEnvelopePoints(visible, startSec);
+      points.forEach((point, index) => {
         if (index === 0) {
-          traceCtx.moveTo(x, y);
+          traceCtx.moveTo(point.x, point.y);
         } else {
-          traceCtx.lineTo(x, y);
+          traceCtx.lineTo(point.x, point.y);
         }
       });
       traceCtx.stroke();
       traceCtx.restore();
+      drawVisibleMarkers(startSec, startSec + state.windowSec);
     }
 
     function renderFrame() {
@@ -915,9 +1690,19 @@
       pushData(data) {
         queueData(data);
       },
+      ingestSample,
       parseDataLine,
       renderFrame,
       resetTrace,
+      toggleRecording,
+      clearRecording,
+      addMarker,
+      recordRowsForExport,
+      buildCsv,
+      buildJson,
+      buildMarkdownReport,
+      renderLongPngBlob,
+      recording,
       state
     };
 
@@ -1081,6 +1866,14 @@
 
     els.clear.addEventListener("click", resetTrace);
 
+    els.recordToggle.addEventListener("click", toggleRecording);
+
+    els.recordClear.addEventListener("click", clearRecording);
+
+    els.markRecord.addEventListener("click", addMarker);
+
+    els.exportRecord.addEventListener("click", exportRecording);
+
     els.helpButton.addEventListener("click", () => {
       els.helpOverlay.hidden = false;
     });
@@ -1181,7 +1974,8 @@
     });
 
     els.window.addEventListener("input", () => {
-      state.windowSec = Number.parseFloat(els.window.value);
+      const next = Number.parseFloat(els.window.value);
+      state.windowSec = Number.isFinite(next) ? Math.max(0.5, Math.min(MAX_WINDOW_SEC, next)) : 5;
       updateControls();
       markGridDirty();
       clearTraceOnly();
@@ -1193,7 +1987,7 @@
         updateControls();
         return;
       }
-      state.ySpanMv = Math.max(0.02, Math.min(100, next));
+      state.ySpanMv = Math.max(0.02, Math.min(MAX_Y_SPAN_MV, next));
       updateControls();
       markGridDirty();
       clearTraceOnly();
